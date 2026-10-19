@@ -6,7 +6,9 @@
 
 | Path | |
 |---|---|
-| `/` | Login, or your nickname and avatar |
+| `/` | Login, or the tool list with whether each tool answers |
+| `/settings` | Dark or light theme |
+| `/admin` | Tools (name, host, order, icon) and users (last seen, role check, force logout). Only `ADMIN_DISCORD_ID` |
 | `/login`, `/auth/callback` | Discord OAuth (`identify guilds.members.read`). Only members with the team role get a session |
 | `/logout` | Revokes the hub session (GET or POST) |
 | `/go?to=<host>&next=<path>&state=<state>` | Sends a signed ticket to `https://<host>/_auth/callback`. Only hosts in the `tools` table |
@@ -14,6 +16,24 @@
 | `/api/gate/public-key` | Ed25519 public key (JWK) for verifying tickets and tool tokens |
 | `/api/gate/sync?since=<cursor>` | For team-gate, `Authorization: Bearer <GATE_TOKEN>`. Revoked sids, changed profiles, tools |
 | `/api/gate/logout` | For team-gate. `POST {"sid": "..."}` |
+
+Static files in `public/` (styles, logos, `header.js`) are served before the Worker runs.
+
+A tool counts as up when `https://<host>/_auth/health` answers with anything below 500, cached for a minute.
+
+## Header for tools
+
+```html
+<team-header></team-header>
+<script src="https://team.rescene-remine.com/header.js" defer></script>
+```
+
+A charcoal bar with the logo, a tool menu and the user's menu (settings, logout), in a shadow root so the tool's CSS doesn't touch it. It needs two things from team-gate on the tool's own host:
+
+- `GET /_auth/me` → `{ "id", "name", "avatar", "theme": "dark" | "light" | null, "tools": [{ "host", "name" }] }`, or 401. Without it only the logo shows.
+- `POST /_auth/logout` from the user menu.
+
+A tool with a CSP needs `team.rescene-remine.com` in `script-src` and `img-src`, `cdn.discordapp.com` in `img-src`, and `cdn.jsdelivr.net` in `style-src` for the font.
 
 The cron rechecks each signed-in person's role once a day with their own refresh token, a few people per run. Lost role, left the server or removed the app → all their sessions are revoked. If Discord doesn't answer, they're left alone until the next day.
 
@@ -42,6 +62,6 @@ Rotating `TOKEN_KEY` makes stored refresh tokens unreadable, so everyone is logg
 npm install
 npm test
 npm run check
-npx wrangler d1 migrations apply team-hub --local
+npx wrangler d1 migrations apply team-hub --local   # --remote before deploying a new migration
 npm run dev   # secrets in .dev.vars, plus HUB_ORIGIN=http://localhost:8787
 ```
