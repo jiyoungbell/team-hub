@@ -255,3 +255,14 @@
 
 남은 일(사용자)
 - 디코 개발자 화면(앱 1420078078511550657) → OAuth2 → Redirects 에서 `https://monitor.rescene-remine.com/auth/discord/callback` 지우기. `https://team.rescene-remine.com/auth/callback` 은 남긴다.
+
+### 4단계 이후, 2026-10-19~20
+한 일
+- 별이 웹 채팅: 허브 `/chat/embed`·`/api/chat` + 모든 팀 사이트의 공통 버튼(`chat-widget.js`, 헤더가 같이 불러옴). 다리는 home-server `team-chat/`. 열 때 로딩 화면을 먼저 보여 준다.
+- 도구 `chart.rescene-remine.com`(monitor-dash 의 차트 화면, 같은 서버) 추가(`migrations/0003_chart_tool.sql`).
+- 속도: 도구 상태를 D1 `tools.up/checked_at` 에 두고 1분 지난 값은 응답 뒤에 다시 확인(화면이 홈서버를 기다리지 않음, `0004_tool_health.sql`). 정적 파일 캐시(`public/_headers`). 허브 화면의 세션·도구 목록을 같이 읽음. 허브 요청은 무료 플랜이라 한국에서 홍콩(HKG)을 거친다.
+- 배포: GitHub Actions(`.github/workflows/ci.yml`). main 에 올리면 테스트 → 원격 D1 마이그레이션 → 배포. `npm run deploy` 도 마이그레이션을 먼저 한다.
+- 서명 키 교체: team-gate 가 공개키 파일의 `{"keys": [...]}` 를 모두 믿는다. 옛 키와 새 키를 같이 두는 동안 바꾸므로 아무도 로그아웃되지 않는다(team-hub README "Rotating SIGNING_KEY").
+- cert-sorter: 상태 폴링을 바뀐 게 없으면 204(`X-Status-Version`), 진행 막대 시계 흔들림·필터 전환 출렁임 수정, 워커는 멈출 때 하던 장을 마친다.
+- homedash·status.jiyoung.win 에 cert·chart·team·team-gate·team-chat 추가, monitor 확인 경로를 `/_auth/health` 로(문지기 뒤라 `/` 는 401).
+- 정리: 되돌리기용 이미지(`*:pre-gate` 등)와 옛 로그인 비밀 사본(`archive/2026-10-19/monitor-dash-login`)을 지웠다(2026-10-20, 사용자 결정).
