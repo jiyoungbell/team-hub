@@ -17,9 +17,9 @@
 | `/api/gate/sync?since=<cursor>` | For team-gate, `Authorization: Bearer <GATE_TOKEN>`. Revoked sids, changed profiles, tools |
 | `/api/gate/logout` | For team-gate. `POST {"sid": "..."}` |
 
-Static files in `public/` (styles, logos, `header.js`) are served before the Worker runs.
+Static files in `public/` (styles, logos, `header.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day.
 
-A tool counts as up when `https://<host>/_auth/health` answers with 2xx, cached for a minute.
+A tool counts as up when `https://<host>/_auth/health` answers with 2xx. The last result is kept in D1 and pages use it as is; a result older than a minute is rechecked after the response, so a dead home server doesn't slow the hub down.
 
 ## Header for tools
 

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validHost } from "../src/admin";
 import type { Env } from "../src/env";
-import { forgetHealth } from "../src/health";
 import worker from "../src/index";
 import { cookieOf, FakeDiscord, ROLE, testEnv } from "./helpers";
 
@@ -36,7 +35,6 @@ beforeEach(async () => {
   discord.users.set(ME, { id: ME, nick: "센마인", roles: [ROLE] });
   discord.users.set(MEMBER, { id: MEMBER, nick: "팀원", roles: [ROLE] });
   toolStatus = {};
-  forgetHealth();
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.pathname === "/_auth/health") {

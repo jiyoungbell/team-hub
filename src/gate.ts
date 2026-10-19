@@ -11,10 +11,12 @@ export interface Tool {
   name: string;
   position: number;
   icon: string | null;
+  up: number | null;
+  checked_at: number | null;
 }
 
 export const listTools = async (env: Env) =>
-  (await env.DB.prepare("SELECT host, name, position, icon FROM tools ORDER BY position, host").all<Tool>()).results;
+  (await env.DB.prepare("SELECT host, name, position, icon, up, checked_at FROM tools ORDER BY position, host").all<Tool>()).results;
 
 // /go?to=<tool host>&next=<path>&state=<from team-gate>
 // Hands the tool a one-time ticket; the tool token inside it becomes the tool's cookie.
@@ -66,7 +68,12 @@ export async function gateApi(env: Env, req: Request, url: URL, now: number): Pr
       env.DB.prepare("SELECT id, name, avatar, theme FROM users WHERE updated_at >= ?").bind(since).all(),
       listTools(env)
     ]);
-    return json({ cursor: now, revoked: revoked.results.map((r) => r.id), profiles: profiles.results, tools });
+    return json({
+      cursor: now,
+      revoked: revoked.results.map((r) => r.id),
+      profiles: profiles.results,
+      tools: tools.map(({ host, name, position, icon }) => ({ host, name, position, icon }))
+    });
   }
 
   // A tool's logout button: team-gate knows the sid from its cookie.

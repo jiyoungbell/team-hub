@@ -1,0 +1,8 @@
+# Every tool page loads these from the hub; without this the browser revalidates each one on every load.
+# Scripts and styles: changes reach tools within 5 minutes.
+/*.js
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+/*.css
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+/*.png
+  Cache-Control: public, max-age=86400

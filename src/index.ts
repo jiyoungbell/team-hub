@@ -11,7 +11,7 @@ import { currentSession, revokeSession } from "./session";
 const PAGES = new Set(["/", "/settings", "/admin"]);
 
 export default {
-  async fetch(req, env): Promise<Response> {
+  async fetch(req, env, ctx?): Promise<Response> {
     const url = new URL(req.url);
     const now = Date.now();
     const path = url.pathname;
@@ -66,10 +66,7 @@ export default {
     }
 
     const tools = await listTools(env);
-    const health = await toolHealth(
-      tools.map((t) => t.host),
-      now
-    );
+    const health = await toolHealth(env, tools, now, ctx);
     if (path === "/") return homePage(viewer, tools, health);
     if (path === "/settings") return settingsPage(viewer, tools, health);
     if (path === "/admin") {

@@ -1,27 +1,48 @@
-import { MINUTE } from "./env";
+import { MINUTE, type Env } from "./env";
+import type { Tool } from "./gate";
 
 const TIMEOUT_MS = 2_500;
-const seen = new Map<string, { up: boolean; at: number }>();
 
 // Caddy routes this endpoint to the app's health check. Only success means healthy;
 // redirects, access errors and rate limits must not appear as up.
-async function check(host: string, now: number): Promise<boolean> {
-  const hit = seen.get(host);
-  if (hit && now - hit.at < MINUTE) return hit.up;
-  let up = false;
+async function probe(host: string): Promise<boolean> {
   try {
     const res = await fetch(`https://${host}/_auth/health`, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
-    up = res.ok;
+    return res.ok;
   } catch {
-    up = false;
+    return false;
   }
-  seen.set(host, { up, at: now });
+}
+
+async function refresh(env: Env, host: string, now: number): Promise<boolean> {
+  // Claim the check so concurrent requests don't all probe the same host.
+  const claim = await env.DB.prepare("UPDATE tools SET checked_at = ? WHERE host = ? AND (checked_at IS NULL OR checked_at < ?)")
+    .bind(now, host, now - MINUTE)
+    .run();
+  if (!claim.meta.changes) return false;
+  const up = await probe(host);
+  await env.DB.prepare("UPDATE tools SET up = ? WHERE host = ?").bind(up ? 1 : 0, host).run();
   return up;
 }
 
-export async function toolHealth(hosts: string[], now: number): Promise<Map<string, boolean>> {
-  const ups = await Promise.all(hosts.map((h) => check(h, now)));
-  return new Map(hosts.map((h, i) => [h, ups[i]!]));
+// Answers from the last stored check; stale ones are rechecked after the response
+// (waitUntil), so a dead home server never slows the hub down. Only a tool that was
+// never checked is probed inline.
+export async function toolHealth(env: Env, tools: Tool[], now: number, ctx?: ExecutionContext): Promise<Map<string, boolean>> {
+  const health = new Map<string, boolean>();
+  await Promise.all(
+    tools.map(async (t) => {
+      if (t.up === null) {
+        health.set(t.host, await refresh(env, t.host, now));
+        return;
+      }
+      health.set(t.host, t.up === 1);
+      if ((t.checked_at ?? 0) < now - MINUTE) {
+        const job = refresh(env, t.host, now);
+        if (ctx) ctx.waitUntil(job);
+        else await job;
+      }
+    })
+  );
+  return health;
 }
-
-export const forgetHealth = () => seen.clear();
