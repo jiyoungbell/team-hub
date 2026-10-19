@@ -4,8 +4,7 @@ import { listTools } from './gate';
 export async function chatFrame(env: Env, userId: string): Promise<Response> {
   const hosts = (await listTools(env)).map(t => `https://${t.host}`).filter(h => /^https:\/\/[a-z0-9.-]+$/.test(h));
   return new Response(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/chat.css"><title>별이와 대화</title></head><body data-user="${userId}" data-parent-origins="${encodeURIComponent(JSON.stringify([env.HUB_ORIGIN, ...hosts]))}">
-<header><strong>🐶 별이</strong><button id="reset" title="새 대화">새 대화</button><button id="close" aria-label="채팅 닫기">✕</button></header>
-<p class="sharing">보고 있는 화면의 제목과 선택 항목이 질문과 함께 공유됩니다.<br>“이 이슈 정리해줘”, “이 곡 상황 어때?”처럼 물어보세요.</p>
+<header><strong>별이</strong><button id="reset" title="새 대화">새 대화</button><button id="close" aria-label="채팅 닫기">✕</button></header>
 <main id="messages" role="log" aria-label="대화"></main><p id="status" role="status"></p>
 <p id="attachment" aria-live="polite">화면 확인 중…</p>
 <form><label class="sr" for="message">별이에게 보낼 메시지</label><textarea id="message" rows="2" maxlength="4000" placeholder="별이에게 물어보세요"></textarea><button id="send" type="submit">보내기</button></form><script src="/chat.js" defer></script></body></html>`, {
@@ -44,11 +43,14 @@ export async function chatReply(req: Request, env: Env, userId: string): Promise
     if (!c || typeof c !== 'object' || !['page','issue','item','chart','song'].includes(c.kind) || typeof c.title !== 'string' || c.title.length > 200 || typeof c.url !== 'string' || c.url.length > 500) return json({ error: 'context' }, 400);
     let url: URL;
     try { url = new URL(c.url); } catch { return json({ error: 'context' }, 400); }
-    const origins = [env.HUB_ORIGIN, ...(await listTools(env)).map(t => `https://${t.host}`)];
+    const tools = await listTools(env);
+    const origins = [env.HUB_ORIGIN, ...tools.map(t => `https://${t.host}`)];
     if (!origins.includes(url.origin) || url.username || url.password || url.search) return json({ error: 'context' }, 400);
+    // A page without a heading sends no title; name it after the tool.
+    const title = c.title.trim() || (url.origin === env.HUB_ORIGIN ? '팀 허브' : tools.find(t => t.host === url.host)?.name ?? url.host);
     if (['issue','item'].includes(c.kind) && (!Number.isSafeInteger(c.id) || c.id <= 0 || url.hostname !== 'monitor.rescene-remine.com')) return json({ error: 'context' }, 400);
     if (c.date !== undefined && (typeof c.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c.date))) return json({ error: 'context' }, 400);
-    context = { kind: c.kind, title: c.title, url: url.href, ...(['issue','item'].includes(c.kind) ? { id: c.id } : {}), ...(c.date ? { date: c.date } : {}) };
+    context = { kind: c.kind, title, url: url.href, ...(['issue','item'].includes(c.kind) ? { id: c.id } : {}), ...(c.date ? { date: c.date } : {}) };
       if (c.comments !== undefined) {
         const m = c.comments;
         if (c.kind !== 'item' || !m || typeof m !== 'object' || m.itemId !== c.id || typeof m.text !== 'string' || m.text.length > 6000 || !Number.isSafeInteger(m.count) || m.count < 0 || m.count > 10000 || !Number.isSafeInteger(m.total) || m.total < m.count || m.total > 1000000 || !Number.isSafeInteger(m.at) || m.at < 0 || typeof m.truncated !== 'boolean') return json({ error: 'comments' }, 400);

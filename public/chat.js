@@ -32,7 +32,7 @@
   const render = (animate = false) => {
     messages.replaceChildren();
     if (!state.messages.length) {
-      const p = document.createElement('p'); p.className = 'welcome'; p.textContent = '안녕하세요, 별이예요 🐶'; messages.append(p);
+      const p = document.createElement('p'); p.className = 'welcome'; p.textContent = '안녕하세요, 별이예요'; messages.append(p);
     }
     for (const m of state.messages) {
       const p = document.createElement('div'); p.className = `message ${m.role === 'user' ? 'user' : 'assistant'}`; p.textContent = m.text; if (m.context) { const note = document.createElement('small'); note.className = 'sent-context'; note.textContent = label(m.context); p.prepend(note); } messages.append(p);

@@ -4,7 +4,7 @@
   const host = document.createElement('div');
   host.id = 'team-chat-widget';
   const root = host.attachShadow({ mode: 'open' });
-  root.innerHTML = `<link rel="stylesheet" href="${hub}/chat-widget.css"><button class="launcher" aria-label="별이와 대화하기" aria-expanded="false">🐶 별이</button><div class="panel" hidden></div>`;
+  root.innerHTML = `<link rel="stylesheet" href="${hub}/chat-widget.css"><button class="launcher" aria-label="별이와 대화하기" aria-expanded="false">별이</button><div class="panel" hidden></div>`;
   document.body.append(host);
   const button = root.querySelector('button');
   const panel = root.querySelector('.panel');
@@ -13,8 +13,7 @@
   const readContext = () => {
     const el = document.querySelector('[data-team-chat-kind]');
     const kind = el?.dataset.teamChatKind || 'page';
-    const names = { 'cert.rescene-remine.com': 'MAMA 인증 정리', 'monitor.rescene-remine.com': '모니터', 'chart.rescene-remine.com': '차트', 'team.rescene-remine.com': '팀 허브' };
-    const title = (el?.dataset.teamChatTitle || document.querySelector('h1')?.textContent || names[location.hostname] || document.title).trim().slice(0, 200);
+    const title = (el?.dataset.teamChatTitle || document.querySelector('h1')?.textContent || '').trim().slice(0, 200);
     const context = { kind, title, url: (location.origin + location.pathname + location.hash).slice(0, 500) };
     if (kind === 'issue' || kind === 'item') context.id = Number(el?.dataset.teamChatId);
     if (el?.dataset.teamChatDate) context.date = el.dataset.teamChatDate;

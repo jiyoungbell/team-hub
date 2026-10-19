@@ -43,3 +43,15 @@ it('includes loaded comments only for their matching item and bounds their size'
  expect(JSON.parse((mock.mock.calls[0] as unknown as [string,RequestInit])[1].body as string).context.comments).toEqual(comments);
  for(const ctx of [{...context,kind:'issue'},{...context,id:999},{...context,comments:{...comments,text:'x'.repeat(6001)}},{...context,comments:{...comments,count:4}}]) expect((await post(ctx)).status).toBe(400);
 });
+it('names an untitled screen after its tool from the tool list',async()=>{
+ const env=await testEnv();const mock=vi.fn(async()=>Response.json({answer:'ok'}));vi.stubGlobal('fetch',mock);
+ await env.DB.prepare("INSERT INTO tools (host, name, position) VALUES ('newtool.rescene-remine.com', '새 도구', 9)").run();
+ const post=(context:unknown)=>chatReply(new Request(env.HUB_ORIGIN+'/api/chat',{method:'POST',headers:{origin:env.HUB_ORIGIN},body:JSON.stringify({conversation,message:'뭐야?',context})}),env,'123456');
+ const sent=()=>JSON.parse((mock.mock.calls.at(-1) as unknown as [string,RequestInit])[1].body as string).context.title;
+ expect((await post({kind:'page',title:'',url:'https://newtool.rescene-remine.com/'})).status).toBe(200);
+ expect(sent()).toBe('새 도구');
+ await post({kind:'page',title:'  ',url:env.HUB_ORIGIN+'/'});
+ expect(sent()).toBe('팀 허브');
+ await post({kind:'page',title:'차트 상세',url:'https://chart.rescene-remine.com/'});
+ expect(sent()).toBe('차트 상세');
+});
