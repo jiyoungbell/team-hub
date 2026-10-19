@@ -62,6 +62,17 @@ npx wrangler secret put ADMIN_DISCORD_ID
 
 Rotating `TOKEN_KEY` makes stored refresh tokens unreadable, so everyone is logged out at the next recheck.
 
+### Rotating SIGNING_KEY
+
+team-gate trusts every key in its public key file, so tools keep accepting cookies signed with the old key during the switch and nobody is logged out.
+
+```sh
+umask 077; npm run -s keygen > ~/signing-next.jwk   # prints the new public key
+# team-gate: public-key.json → {"keys": [<current public key>, <new public key>]}, restart, look for "공개키 2개" in its log
+npx wrangler secret put SIGNING_KEY < ~/signing-next.jwk && shred -u ~/signing-next.jwk
+# 7 days later (tool token lifetime): public-key.json → the new public key alone, restart team-gate
+```
+
 ## Development
 
 ```sh
