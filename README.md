@@ -19,7 +19,7 @@
 
 Static files in `public/` (styles, logos, `header.js`) are served before the Worker runs.
 
-A tool counts as up when `https://<host>/_auth/health` answers with anything below 500, cached for a minute.
+A tool counts as up when `https://<host>/_auth/health` answers with 2xx, cached for a minute.
 
 ## Header for tools
 

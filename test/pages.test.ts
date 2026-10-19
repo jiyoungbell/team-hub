@@ -56,7 +56,7 @@ describe("pages", () => {
   });
 
   it("lists tools with whether they answer", async () => {
-    toolStatus["cert.rescene-remine.com"] = 302;
+    toolStatus["cert.rescene-remine.com"] = 200;
     toolStatus["monitor.rescene-remine.com"] = 502;
     const html = await (await call("/", { cookie: await sessionOf(ME) })).text();
     expect(html).toMatch(/MAMA 인증 분류<\/span>/);
