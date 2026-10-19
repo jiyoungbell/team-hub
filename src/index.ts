@@ -19,6 +19,9 @@ export default {
     if (path.startsWith("/api/gate/")) return gateApi(env, req, url, now);
     if (path === "/auth/callback") return callback(env, req, url, now);
 
+    // Pages need the tool list too; fetch it alongside the session instead of after it.
+    const pageTools = req.method === "GET" && (PAGES.has(path) || path.startsWith("/admin/")) ? listTools(env) : null;
+    pageTools?.catch(() => {});
     const session = await currentSession(env, req, now);
 
     if (path === "/chat/embed" || path === "/api/chat") {
@@ -65,7 +68,7 @@ export default {
       return (admin && (await adminPost(env, req, path, now))) || notFoundPage();
     }
 
-    const tools = await listTools(env);
+    const tools = await (pageTools ?? listTools(env));
     const health = await toolHealth(env, tools, now, ctx);
     if (path === "/") return homePage(viewer, tools, health);
     if (path === "/settings") return settingsPage(viewer, tools, health);
