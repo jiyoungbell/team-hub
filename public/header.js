@@ -44,7 +44,7 @@ summary:hover, details[open] summary { background: var(--hover); }
 .left { left: 0; }
 .right { right: 0; }
 .menu a, .menu button {
-  display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 8px;
+  display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 8px; box-sizing: border-box;
   border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%;
 }
 .menu a:hover, .menu button:hover { background: var(--hover); }
