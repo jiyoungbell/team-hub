@@ -239,3 +239,19 @@
 
 남은 일
 - 4단계: monitor-dash. 며칠 문제없으면 `docker rmi cert-sorter:pre-gate`.
+
+### 4단계(세션 D), 2026-10-19
+한 일
+- 경로 정리: monitor-dash 는 입구가 셋. 바깥 입구 `172.19.0.1:8092` 만 Caddy 를 거치고 Host 로 `monitor.`(대시보드)·`media.`(미디어 중계, 로그인 없음)를 나눈다. `/internal/*`(봇·별이·homedash 토큰)은 `127.0.0.1:8096`, 디시 창구는 `172.30.4.1:8097` 로 따로라 문지기와 상관없다. 웹훅은 없다. `/api/stream`(SSE)은 문지기 안.
+- 4.2 주의 2(호스트 네트워크): Caddy 가 통과한 요청에만 `X-Team-Gate-Secret` 을 붙이고(값 `~/.config/caddy/team-gate.env`, compose `env_file`), monitor 는 이 값이 `team-gate.secret` 과 맞을 때만 X-Team 헤더를 믿는다. 서버 안에서 8092 로 직접 꾸민 요청이 막히는 것 확인.
+- monitor-dash: 팀 비밀번호·자체 디코 로그인·로그인 화면·`set-password`·로그인 실패 관리자 알림·`config.json` 의 `login`·`discord` 삭제. CSP 에 허브(script·style·img·form-action)와 cdn.discordapp.com. 공통 헤더.
+- 허브 헤더: 스타일을 `header.css` 로 뺌(monitor 의 `style-src 'self'` 가 shadow DOM 안 인라인 스타일을 막음), 겹침 순서를 낮춤(z-index 20, monitor 의 사진 크게 보기·창 아래로), 페이지에 Pretendard 가 있으면 CDN 글꼴을 안 부름.
+- Caddyfile `(team_gate)`: 앱으로 넘길 때 `X-Team-Gate-Secret` 을 붙이고 방문자가 보낸 같은 머리는 지움. monitor 블록의 `/login` 제한 삭제. Caddy 컨테이너를 한 번 다시 만듦(몇 초 모든 사이트 끊김).
+- 옛 비밀 파일(`team-password.hash`, `session.secret`, `discord-oauth.secret`)과 바꾸기 전 config.json 은 `/storage/backups/archive/2026-10-19/monitor-dash-login/` 으로 옮김. 되돌리기 이미지 `monitor-dash:pre-gate`.
+- 사용자가 확인: 디코로 들어가 대시보드·실시간·조작·사진 보기·도구 오가기·로그아웃.
+
+사고
+- `config.json` 을 고치다 한 줄짜리 `login` 칸을 정규식으로 자르면서 바로 뒤 `charts` 칸까지 지워졌고, monitor 가 1분 주기로 그 파일을 1번 읽었다(20:29). 바로 사본에서 되돌려 다음 주기에 다시 읽혔고, 차트 수집(매시 정각)과 겹치지 않아 빠진 데이터는 없다.
+
+남은 일(사용자)
+- 디코 개발자 화면(앱 1420078078511550657) → OAuth2 → Redirects 에서 `https://monitor.rescene-remine.com/auth/discord/callback` 지우기. `https://team.rescene-remine.com/auth/callback` 은 남긴다.
