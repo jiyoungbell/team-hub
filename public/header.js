@@ -25,6 +25,15 @@
         if (res.ok) me = await res.json();
       } catch {}
 
+      // The tool page follows the hub theme: <html data-theme>, kept under "team-theme" so the tool can set it before first paint.
+      if (me) {
+        const theme = me.theme === "light" ? "light" : "dark";
+        document.documentElement.dataset.theme = theme;
+        try {
+          localStorage.setItem("team-theme", theme);
+        } catch {}
+      }
+
       const tools = Array.isArray(me?.tools) ? me.tools : [];
       const here = tools.find((t) => t.host === location.host);
       const toolMenu = tools.length

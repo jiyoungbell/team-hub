@@ -33,6 +33,12 @@ A charcoal bar with the logo, a tool menu and the user's menu (settings, logout)
 - `GET /_auth/me` → `{ "id", "name", "avatar", "theme": "dark" | "light" | null, "tools": [{ "host", "name" }] }`, or 401. Without it only the logo shows.
 - `POST /_auth/logout` from the user menu.
 
+Theme: the header sets `<html data-theme="dark|light">` from the user's hub setting (no setting = dark) and stores it in `localStorage["team-theme"]`. Tools style both themes off that attribute and apply the stored value before first paint, so the page doesn't flash:
+
+```html
+<script>try { document.documentElement.dataset.theme = localStorage.getItem("team-theme") === "light" ? "light" : "dark"; } catch (e) {}</script>
+```
+
 A tool with a CSP needs `team.rescene-remine.com` in `script-src` and `img-src`, `cdn.discordapp.com` in `img-src`, and `cdn.jsdelivr.net` in `style-src` for the font.
 
 The cron rechecks each signed-in person's role once a day with their own refresh token, a few people per run. Lost role, left the server or removed the app → all their sessions are revoked. If Discord doesn't answer, they're left alone until the next day.
