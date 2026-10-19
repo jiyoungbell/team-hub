@@ -63,6 +63,19 @@ describe("/go", () => {
     expect((tool!.exp as number) - (tool!.iat as number)).toBe(7 * 86400);
   });
 
+  it("opens chart with the existing hub session without another Discord login", async () => {
+    const sess = await sessionOf(ME);
+    discord.calls = [];
+    const res = await call(`/go?to=chart.rescene-remine.com&state=${STATE}`, { cookie: sess });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.origin).toBe("https://chart.rescene-remine.com");
+    const ticket = await verifyJwt(publicJwk(env.SIGNING_KEY), location.searchParams.get("ticket")!);
+    expect(ticket).toMatchObject({ aud: "chart.rescene-remine.com", sid: sess!.split("=")[1]!.split(".")[0] });
+    expect(discord.calls).toEqual([]);
+    expect((await call("/api/me", { cookie: sess })).status).toBe(200);
+  });
+
   it("refuses hosts that aren't tools, and bad states", async () => {
     const sess = await sessionOf(ME);
     expect((await call(`/go?to=jachong.rescene-remine.com&state=${STATE}`, { cookie: sess })).status).toBe(400);
@@ -98,7 +111,7 @@ describe("/api/gate", () => {
     const first = (await (await call("/api/gate/sync?since=0", { headers: gate })).json()) as Record<string, unknown>;
     expect(first.revoked).toEqual([]);
     expect(first.profiles).toEqual([{ id: ME, name: "지영", avatar: expect.any(String), theme: null }]);
-    expect((first.tools as { host: string }[]).map((t) => t.host)).toEqual(["cert.rescene-remine.com", "monitor.rescene-remine.com"]);
+    expect((first.tools as { host: string }[]).map((t) => t.host)).toEqual(["cert.rescene-remine.com", "monitor.rescene-remine.com", "chart.rescene-remine.com"]);
 
     await call("/logout", { cookie: sess });
     const next = (await (await call(`/api/gate/sync?since=${first.cursor}`, { headers: gate })).json()) as Record<string, unknown>;

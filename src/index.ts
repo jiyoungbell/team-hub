@@ -1,3 +1,4 @@
+import { chatFrame, chatReply } from "./chat";
 import { ADMIN_ERRORS, adminPost, listUsers } from "./admin";
 import { callback, clearSession, login, redirect } from "./auth";
 import { isAdmin, type Env } from "./env";
@@ -19,6 +20,12 @@ export default {
     if (path === "/auth/callback") return callback(env, req, url, now);
 
     const session = await currentSession(env, req, now);
+
+    if (path === "/chat/embed" || path === "/api/chat") {
+      if (!session) return new Response("로그인이 만료되었습니다. 허브에서 로그인한 뒤 다시 열어주세요.", { status: 401, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+      if (path === "/api/chat") return chatReply(req, env, session.userId);
+      return chatFrame(env, session.userId);
+    }
 
     if (path === "/login") return session && url.searchParams.get("again") !== "1" ? redirect("/") : login(env, url);
 

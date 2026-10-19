@@ -89,7 +89,7 @@ ${v.admin ? item("/admin", ICON.admin, "관리자", at === "admin") : ""}
 <h1>${esc(title)}</h1>
 ${main}
 </main>
-</div>`
+</div><script src="/chat-widget.js" defer></script>`
   );
 }
 
