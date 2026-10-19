@@ -79,6 +79,8 @@ npx wrangler secret put SIGNING_KEY < ~/signing-next.jwk && shred -u ~/signing-n
 npm install
 npm test
 npm run check
-npx wrangler d1 migrations apply team-hub --local   # --remote before deploying a new migration
+npx wrangler d1 migrations apply team-hub --local
 npm run dev   # secrets in .dev.vars, plus HUB_ORIGIN=http://localhost:8787
 ```
+
+`npm run deploy` applies new migrations to the remote D1 first, then deploys. A push to `main` does the same from GitHub Actions after the tests pass (`.github/workflows/ci.yml`, secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`).

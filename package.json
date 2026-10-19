@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler d1 migrations apply team-hub --remote && wrangler deploy",
     "check": "tsc --noEmit && tsc --noEmit -p test",
     "test": "vitest run",
     "keygen": "node scripts/keygen.mjs"
