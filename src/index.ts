@@ -1,5 +1,6 @@
 import { callback, clearSession, login, redirect } from "./auth";
 import { isAdmin, type Env } from "./env";
+import { gateApi, go } from "./gate";
 import { homePage, loginPage } from "./pages";
 import { currentSession, revokeSession } from "./session";
 
@@ -9,6 +10,7 @@ export default {
     const now = Date.now();
     const path = url.pathname;
 
+    if (path.startsWith("/api/gate/")) return gateApi(env, req, url, now);
     if (path === "/auth/callback") return callback(env, req, url, now);
 
     const session = await currentSession(env, req, now);
@@ -19,6 +21,11 @@ export default {
       // GET too, so a tool's logout can bounce through here.
       if (session) await revokeSession(env, session.id, now);
       return redirect("/", [clearSession()]);
+    }
+
+    if (path === "/go") {
+      if (!session) return redirect(`/login?next=${encodeURIComponent(path + url.search)}`);
+      return go(env, url, session, now);
     }
 
     if (path === "/api/me") {
