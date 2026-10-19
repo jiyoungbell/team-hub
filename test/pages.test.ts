@@ -52,7 +52,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("pages", () => {
   it("shows the login button to visitors and sends them to Discord from other pages", async () => {
     expect(await (await call("/")).text()).toContain("디스코드로 로그인");
-    expect((await call("/settings")).headers.get("location")).toBe("/login?next=%2Fsettings");
+    expect(await (await call("/settings")).text()).toContain('href="/login?next=%2Fsettings"');
   });
 
   it("lists tools with whether they answer", async () => {

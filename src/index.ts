@@ -29,7 +29,7 @@ export default {
     }
 
     if (path === "/go") {
-      if (!session) return redirect(`/login?next=${encodeURIComponent(path + url.search)}`);
+      if (!session) return loginPage(path + url.search);
       return go(env, url, session, now);
     }
 
@@ -41,7 +41,7 @@ export default {
 
     const admin = path === "/admin" || path.startsWith("/admin/");
     if (!PAGES.has(path) && !admin) return notFoundPage();
-    if (!session) return path === "/" ? loginPage() : redirect(`/login?next=${encodeURIComponent(path)}`);
+    if (!session) return loginPage(path === "/" ? undefined : path);
     const viewer: Viewer = { name: session.name, avatar: session.avatar, theme: session.theme, admin: isAdmin(env, session.userId) };
     if (admin && !viewer.admin) return notFoundPage();
 

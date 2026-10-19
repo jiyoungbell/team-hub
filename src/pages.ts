@@ -188,7 +188,10 @@ ${iconSelect(null)}
 const center = (body: string, status = 200, headers: HeadersInit = {}) =>
   page("리센느 음원총공팀", null, `<main class="center"><span class="logo big">${logo}</span>${body}</main>`, status, headers);
 
-export const loginPage = () => center(`<a class="btn primary" href="/login">디스코드로 로그인</a>`);
+// Always a click away from Discord: right after a logout, an open tool tab that reloads
+// must not sign the person straight back in (Discord skips its screen for a known app).
+export const loginPage = (next?: string) =>
+  center(`<a class="btn primary" href="/login${next ? `?next=${esc(encodeURIComponent(next))}` : ""}">디스코드로 로그인</a>`);
 
 export const deniedPage = (headers: HeadersInit) =>
   center(`<p class="lead">권한 없음</p><a class="btn primary" href="/login?again=1">다른 계정으로 로그인</a>`, 403, headers);

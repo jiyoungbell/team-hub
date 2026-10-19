@@ -41,7 +41,8 @@ describe("/go", () => {
 
   it("sends someone without a session to log in first", async () => {
     const res = await call(`/go?to=cert.rescene-remine.com&state=${STATE}`);
-    expect(res.headers.get("location")).toBe(`/login?next=${encodeURIComponent(`/go?to=cert.rescene-remine.com&state=${STATE}`)}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(`href="/login?next=${encodeURIComponent(`/go?to=cert.rescene-remine.com&state=${STATE}`).replace(/&/g, "&#38;")}"`);
   });
 
   it("issues a ticket for a listed tool", async () => {
