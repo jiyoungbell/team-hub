@@ -5,54 +5,15 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const chevron = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
 
-  if (!document.querySelector('link[href*="pretendard"]')) {
+  // Skip the font when the tool already has Pretendard (or its CSP would block the CDN anyway).
+  const hasPretendard = [...document.fonts].some((f) => f.family.replace(/["']/g, "") === "Pretendard");
+  if (!hasPretendard && !document.querySelector('link[href*="pretendard"]')) {
     const font = document.createElement("link");
     font.rel = "stylesheet";
     font.href = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css";
     document.head.append(font);
   }
 
-  const css = `
-:host { all: initial; display: block; position: relative; z-index: 1000; }
-.bar {
-  --bg: #1a1b1e; --line: #2e3034; --text: #f2f2f2; --muted: #a9adb2; --hover: #2a2c30; --menu: #232528;
-  display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 16px; box-sizing: border-box;
-  background: var(--bg); color: var(--text); border-bottom: 1px solid var(--line);
-  font: 15px/1.4 "Pretendard Variable", Pretendard, system-ui, sans-serif;
-}
-.bar.light { --bg: #e9e9e6; --line: #d6d6d2; --text: #1e2024; --muted: #55595e; --hover: #dcdcd8; --menu: #ffffff; }
-a { color: inherit; text-decoration: none; }
-.logo { display: flex; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
-.logo img { height: 34px; width: auto; }
-.light .logo .w, .bar:not(.light) .logo .d { display: none; }
-details { position: relative; }
-summary {
-  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-radius: 8px;
-  cursor: pointer; list-style: none; white-space: nowrap;
-}
-summary::-webkit-details-marker { display: none; }
-summary:hover, details[open] summary { background: var(--hover); }
-.here { font-weight: 600; }
-.spacer { flex: 1; }
-.avatar { width: 28px; height: 28px; border-radius: 50%; }
-.name { max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
-.menu {
-  position: absolute; top: 46px; min-width: 200px; padding: 6px; box-sizing: border-box;
-  display: flex; flex-direction: column; background: var(--menu); border: 1px solid var(--line);
-  border-radius: 12px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
-}
-.left { left: 0; }
-.right { right: 0; }
-.menu a, .menu button {
-  display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 8px; box-sizing: border-box;
-  border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%;
-}
-.menu a:hover, .menu button:hover { background: var(--hover); }
-.menu .on { font-weight: 600; }
-.menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
-form { margin: 0; }
-@media (max-width: 560px) { .name { display: none; } .logo img { height: 28px; } }
-`;
 
   class TeamHeader extends HTMLElement {
     async connectedCallback() {
@@ -77,11 +38,17 @@ form { margin: 0; }
 <div class="menu right"><a href="${HUB}/settings">설정</a><form method="post" action="/_auth/logout"><button>로그아웃</button></form></div></details>`
         : "";
 
-      root.innerHTML = `<style>${css}</style>
-<div class="bar${me?.theme === "light" ? " light" : ""}">
+      root.innerHTML = `<link rel="stylesheet" href="${HUB}/header.css">
+<div class="bar${me?.theme === "light" ? " light" : ""}" hidden>
 <a class="logo" href="${HUB}/"><img class="w" src="${HUB}/logo-white.png" alt="리센느 음원총공팀"><img class="d" src="${HUB}/logo-dark.png" alt="리센느 음원총공팀"></a>
 ${toolMenu}<span class="spacer"></span>${userMenu}
 </div>`;
+
+      // Stay hidden until the styles arrive, so the bar never flashes unstyled.
+      const bar = root.querySelector(".bar");
+      const show = () => (bar.hidden = false);
+      root.querySelector("link").addEventListener("load", show);
+      root.querySelector("link").addEventListener("error", show);
 
       const menus = [...root.querySelectorAll("details")];
       for (const d of menus) d.addEventListener("toggle", () => d.open && menus.forEach((o) => o !== d && (o.open = false)));
