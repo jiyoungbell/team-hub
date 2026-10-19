@@ -220,5 +220,5 @@
 - 도구에 CSP 가 있으면 script-src·img-src 에 team., img-src 에 cdn.discordapp.com, style-src 에 cdn.jsdelivr.net(글꼴). cert-sorter 는 지금 `frame-ancestors` 만 있어서 손댈 것 없음.
 
 남은 일
-- 배포는 사용자가 한다: `npx wrangler d1 migrations apply team-hub --remote` 후 `npm run deploy`.
+- 배포 끝(2026-10-19, 사용자가 migrations apply --remote + deploy, 접속 확인).
 - 헤더는 가짜 도구 페이지로만 확인함. 실제 도구에 붙이는 것은 3단계.
