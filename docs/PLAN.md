@@ -52,7 +52,7 @@
 
 ### 3.3 도구로 들어가기 (리디렉션)
 1. `cert.` 에 도구 쿠키가 없음 → Caddy `forward_auth` 로 물은 team-gate 가 `team./go?to=cert.rescene-remine.com&next=/원래경로` 로 보낸다. 이때 team-gate 는 state 값을 그 사이트 쿠키에 잠깐 넣는다(로그인 위조 방지).
-2. 허브 로그인이 안 돼 있으면 디코 로그인부터. 돼 있으면 바로 3.
+2. 허브 로그인이 안 돼 있으면 허브 로그인 화면(버튼 한 번 누르고 디코로). 돼 있으면 바로 3. (3단계에서 바꿈: 곧장 디코로 보내면 로그아웃 직후 열린 도구 탭이 새로고침하며 다시 로그인시켰다)
 3. Worker 가 **도구 목록에 등록된 호스트에만** 표를 발급한다(아무 주소로나 보내지 않게). `next` 는 같은 사이트 안 경로만 허용한다.
 4. 표: Ed25519 서명. 내용은 sid, 디코 번호, 받는 호스트(aud), state, 만료(발급 후 60초), 1회용 번호. 서명 키는 Worker 비밀값에만 있다.
 5. `cert./_auth/callback?ticket=…` → team-gate 가 서명·호스트·state·만료·1회용을 확인하고 그 사이트 전용 도구 쿠키(7일, `__Host-`, HttpOnly, SameSite=Lax)를 건다 → `next` 로 보낸다.
@@ -222,3 +222,20 @@
 남은 일
 - 배포 끝(2026-10-19, 사용자가 migrations apply --remote + deploy, 접속 확인).
 - 헤더는 가짜 도구 페이지로만 확인함. 실제 도구에 붙이는 것은 3단계.
+
+### 3단계(세션 C), 2026-10-19
+한 일
+- team-gate(`team-gate/`): Node 22, 의존 패키지 없음. `docker compose up -d --build`, 망 `net-gate`(172.30.7.0/24, `security/create-app-networks.sh`), Caddy 도 이 망에 붙임(compose 에도 적음). 공개키는 `~/.config/team-gate/public-key.json`(허브 `/api/gate/public-key` 를 받아 둠), 토큰은 1단계의 `gate.token`. 운영·도구 붙이는 법은 `team-gate/README.md`.
+- Caddyfile 조각 `(team_gate)`: `route` 안에서 X-Team-* 지우기 → `/_auth/health` 는 앱 건강 검사로 → `/_auth/*` 는 team-gate → `forward_auth`(copy_headers) → 앱. 도구마다 `import team_gate <호스트> <앱> <건강 검사 경로>`.
+- cert-sorter 옮김(20:02, 사용자가 업로더 6명 역할 확인, "준비되면 바로"): 비밀번호 로그인·IP 잠금·Caddy `/login` 제한·이름 입력칸 삭제, `files.uploader_id` 추가, 공통 헤더. 판정 워커는 손대지 않음(`--no-deps web`). 되돌리기용 `cert-sorter:pre-gate` 이미지. `.env` 의 `TEAM_PASSWORD` 지움.
+- 사용자가 확인: 디코로 들어가 업로드하면 닉네임이 기록됨, 로그아웃.
+
+계획과 다르게 한 것
+- 1회용(`jti`)은 team-gate 메모리에만(표가 60초라 재시작해도 됨).
+- 처음 보는 사람은 그 자리에서 sync 한 번 더(10초에 한 번까지). 1분을 기다리면 그사이 닉네임이 비기 때문.
+- state 쿠키는 로그인 시작마다 하나(`__Host-team-state-<state>`). 하나만 두었더니 탭 두 개가 동시에 로그인하면 서로 덮어써서 "로그인 실패"가 났다.
+- 허브: 세션 없으면 `/go`·`/settings`·`/admin` 모두 로그인 화면(위 3.3 의 2).
+- cert 앱이 X-Team 헤더를 Caddy 에서 온 것만 믿게 하는 장치는 따로 두지 않음: net-cert 에는 Caddy 와 판정 워커만 있다. monitor-dash(호스트 네트워크)는 4단계에서 정한다.
+
+남은 일
+- 4단계: monitor-dash. 며칠 문제없으면 `docker rmi cert-sorter:pre-gate`.
