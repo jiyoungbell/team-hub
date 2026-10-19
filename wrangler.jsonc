@@ -8,7 +8,7 @@
   // Role recheck runs in small batches (see src/recheck.ts); each person is still checked once a day.
   "triggers": { "crons": ["*/30 * * * *"] },
   "d1_databases": [
-    { "binding": "DB", "database_name": "team-hub", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "team-hub", "database_id": "8c8c8cc1-8e5e-48c2-8183-ea321ce6a10e", "migrations_dir": "migrations" }
   ],
   "vars": {
     "HUB_ORIGIN": "https://team.rescene-remine.com",
