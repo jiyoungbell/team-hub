@@ -181,3 +181,25 @@
 
 ## 진행 기록
 (각 세션이 여기에 적는다)
+
+### 1단계(세션 A), 2026-10-19
+한 일
+- 허브 코드: `~/projects/team-hub`, GitHub **`jiyoungbell/team-hub`**(사용자가 개인 저장소로 만듦. 계획의 `rescene-stream/team-hub` 대신). 커밋 규칙은 계획대로.
+- 배포: Worker `team-hub`, 사용자 지정 도메인 `team.rescene-remine.com`, D1 `team-hub`(`8c8c8cc1-8e5e-48c2-8183-ea321ce6a10e`), 스키마 `migrations/0001_init.sql`(users, sessions, tools. tools 에 cert·monitor 넣어 둠).
+- 비밀값: `DISCORD_CLIENT_SECRET`(monitor-dash 와 같은 파일), `SIGNING_KEY`(Ed25519 JWK), `TOKEN_KEY`, `GATE_TOKEN`(사본 `~/.config/team-gate/gate.token`, 600), `ADMIN_DISCORD_ID` = 사용자 `1388530640554692788`(센마인).
+- 디코 앱에 `https://team.rescene-remine.com/auth/callback` 추가함. 사용자가 로그인해서 닉네임·프사 보이는 것 확인.
+- 경로·표 형식·sync 응답은 team-hub `README.md` 에 적음. 요점:
+  - 표·도구 토큰 = compact JWS(EdDSA), `iss` team.rescene-remine.com, `aud` 도구 호스트, `sub` 디코 번호, `sid`, `kind`("ticket"|"tool"). 표에는 `jti`, `state`, `next`, `tok`(=도구 토큰, 그대로 도구 쿠키 값으로 쓴다).
+  - 공개키: `GET /api/gate/public-key`(JWK). 3단계에서 파일로 받아 두고 그걸 쓴다.
+  - `GET /api/gate/sync?since=<cursor>` (Bearer GATE_TOKEN) → `{cursor, revoked[], profiles[{id,name,avatar,theme}], tools[]}`. 다음 호출에 cursor 를 since 로.
+  - 도구 로그아웃: `POST /api/gate/logout {"sid"}`(Bearer) 또는 브라우저를 `team./logout` 으로 보내기(GET 도 받음).
+
+계획과 다르게 한 것
+- Pages 프로젝트 없음. Worker 하나가 화면까지 낸다. 2단계 화면은 같은 Worker 의 정적 파일(`assets`)로 붙이면 된다.
+- 매일 재확인은 30분마다 8명씩(무료 플랜의 호출당 외부 요청·D1 쿼리 50개 한도). 사람마다 하루 한 번은 같다.
+- `tickets_used` 없음. 1회용(`jti`)은 team-gate 가 막는다(3단계 할 일).
+
+남은 일
+- 2단계: 화면은 임시(`src/pages.ts`). 멤버·사진·R2·설정·관리자 화면, `header.js`, `/_auth/health` 확인.
+- 3단계: team-gate 는 `jti` 를 표 만료(60초)까지 기억해서 재사용을 막을 것.
+- 역할 없는 계정으로 막히는 것은 테스트로만 확인(실제 계정으로는 안 해 봄).
