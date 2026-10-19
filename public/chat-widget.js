@@ -4,7 +4,7 @@
   const host = document.createElement('div');
   host.id = 'team-chat-widget';
   const root = host.attachShadow({ mode: 'open' });
-  root.innerHTML = `<link rel="stylesheet" href="${hub}/chat-widget.css"><button class="launcher" aria-label="별이와 대화하기" aria-expanded="false">별이</button><div class="panel" hidden></div>`;
+  root.innerHTML = `<link rel="stylesheet" href="${hub}/chat-widget.css"><button class="launcher" aria-label="별이와 대화하기" aria-expanded="false">별이</button><div class="panel" hidden><div class="loading" role="status" aria-label="불러오는 중"><div class="lh">별이</div><div class="lb"><i></i></div></div></div>`;
   document.body.append(host);
   const button = root.querySelector('button');
   const panel = root.querySelector('.panel');
@@ -61,7 +61,9 @@
       frame = document.createElement('iframe');
       frame.title = '별이와 대화';
       frame.src = `${hub}/chat/embed`;
-      frame.addEventListener('load', () => { lastContext = ''; publish(); });
+      // Keep the loading screen until the frame has painted, so the panel never shows up empty.
+      frame.className = 'wait';
+      frame.addEventListener('load', () => { frame.className = ''; panel.querySelector('.loading')?.remove(); lastContext = ''; publish(); });
       panel.append(frame);
     }
     panel.hidden = false;
