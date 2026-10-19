@@ -2,6 +2,7 @@ import { callback, clearSession, login, redirect } from "./auth";
 import { isAdmin, type Env } from "./env";
 import { gateApi, go } from "./gate";
 import { homePage, loginPage } from "./pages";
+import { recheck } from "./recheck";
 import { currentSession, revokeSession } from "./session";
 
 export default {
@@ -36,5 +37,9 @@ export default {
 
     if (path === "/") return session ? homePage(session.name, session.avatar) : loginPage();
     return new Response("Not Found", { status: 404 });
+  },
+
+  async scheduled(_ctrl, env): Promise<void> {
+    await recheck(env, Date.now());
   }
 } satisfies ExportedHandler<Env>;
