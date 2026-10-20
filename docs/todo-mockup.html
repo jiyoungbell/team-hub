@@ -1,0 +1,478 @@
+<title>할 일 보드 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Hub charcoal, sidebar + content. Final pick: A2 board, small window beside the card (P5) with the table layout (D1). Dark first like the hub. */
+@font-face { font-family: "Pretendard Sub"; src: url(data:font/woff2;base64,__FONT__) format("woff2"); font-weight: 400 800; font-display: swap; }
+:root {
+  --bg: #232528; --side: #1a1b1e; --line: #2e3034; --card: #2d2f33; --card-line: #3a3d42; --card-hover: #6a6e74;
+  --text: #f2f2f2; --muted: #a9adb2; --on: #303236; --hover: #2a2c30; --tile: #f3f2ef; --tile-fg: #26292c;
+  --ok: #8ff0b0; --late: #ffb4a8; --field: #1f2023; --col: rgba(0, 0, 0, 0.18); --scrim: rgba(0, 0, 0, 0.5);
+  --pop: #34363b; --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --grain: 0.6; --logo-w: block; --logo-d: none;
+  --sans: "Pretendard Variable", Pretendard, "Pretendard Sub", system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f4f2; --side: #e9e9e6; --line: #d6d6d2; --card: #ffffff; --card-line: #dcdcd8; --card-hover: #8a8e93;
+    --text: #1e2024; --muted: #55595e; --on: #d9d9d4; --hover: #e0e0dc; --tile: #2d2f33; --tile-fg: #ffffff;
+    --ok: #23a35a; --late: #b0321e; --field: #ffffff; --col: rgba(0, 0, 0, 0.04); --scrim: rgba(20, 20, 20, 0.35);
+    --pop: #ffffff; --shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+    --grain: 0.35; --logo-w: none; --logo-d: block; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f4f4f2; --side: #e9e9e6; --line: #d6d6d2; --card: #ffffff; --card-line: #dcdcd8; --card-hover: #8a8e93;
+  --text: #1e2024; --muted: #55595e; --on: #d9d9d4; --hover: #e0e0dc; --tile: #2d2f33; --tile-fg: #ffffff;
+  --ok: #23a35a; --late: #b0321e; --field: #ffffff; --col: rgba(0, 0, 0, 0.04); --scrim: rgba(20, 20, 20, 0.35);
+  --pop: #ffffff; --shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+  --grain: 0.35; --logo-w: none; --logo-d: block; color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 40px;
+}
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; background-image: url(data:image/png;base64,__NOISE__); opacity: var(--grain); z-index: 40; }
+button, select { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 1440px; margin: 0 auto 10px; }
+.tabs .name { font-size: 13px; color: var(--muted); width: 36px; }
+.tabs button { border: 1px solid var(--card-line); background: var(--card); border-radius: 999px; min-height: 40px; padding: 0 16px; cursor: pointer; font-size: 14px; }
+.tabs button[aria-pressed="true"] { background: var(--tile); color: var(--tile-fg); border-color: var(--tile); font-weight: 600; }
+.tabs + .tabs + .app { margin-top: 16px; }
+
+.app { display: flex; flex-wrap: wrap; max-width: 1440px; margin: 0 auto; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; min-height: 860px; }
+.side { flex: 1 1 240px; display: flex; flex-direction: column; gap: 28px; padding: 28px 18px; background: var(--side); border-right: 1px solid var(--line); }
+.logo { display: flex; padding: 0 10px; }
+.logo img { width: 170px; height: auto; }
+.logo .w { display: var(--logo-w); } .logo .d { display: var(--logo-d); }
+.nav, .me { display: flex; flex-direction: column; gap: 4px; }
+.item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; }
+.item:hover { background: var(--hover); }
+.item.on { background: var(--on); font-weight: 600; }
+.item span { flex-grow: 1; }
+.item .n { flex-grow: 0; font-size: 13px; font-weight: 700; color: var(--late); font-variant-numeric: tabular-nums; }
+.item svg { flex-shrink: 0; }
+.label { padding: 16px 12px 6px; font-size: 13px; color: var(--muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+.me { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+.who { display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--card-line); flex-shrink: 0; }
+
+.main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 28px; padding: 44px 40px 72px; background: var(--bg); }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.head h1 { font-size: 28px; font-weight: 700; flex-grow: 1; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--field); border: 1px solid var(--card-line); }
+.seg button { border: 0; background: none; min-height: 38px; padding: 0 16px; border-radius: 8px; cursor: pointer; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--on); color: var(--text); font-weight: 600; }
+
+.tc { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--card-line); text-align: left; cursor: pointer; }
+.tc:hover { border-color: var(--card-hover); }
+.tc.sel { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+.tc-top { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.tc-title { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tc-stage { font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.tc-who { font-size: 13px; color: var(--muted); }
+.due { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.due.late { color: var(--late); }
+.due.far { font-weight: 500; color: var(--muted); }
+.wait { font-size: 12.5px; color: var(--muted); border: 1px solid var(--card-line); border-radius: 6px; padding: 0 6px; }
+
+.board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start; }
+.col { flex: 0 0 272px; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 14px; background: var(--col); }
+.col-h { display: flex; align-items: baseline; gap: 8px; padding: 2px 4px 4px; }
+.col-h b { font-size: 15px; }
+.col-h span { font-size: 13px; color: var(--muted); }
+.fold { border: 1px dashed var(--card-line); background: none; border-radius: 10px; min-height: 40px; color: var(--muted); font-size: 13px; cursor: pointer; width: 100%; }
+
+.rail-wrap { overflow-x: auto; padding-bottom: 4px; }
+.rail { position: relative; min-width: 960px; }
+.rail-lanes { position: relative; }
+.mk { position: absolute; display: flex; align-items: center; gap: 8px; max-width: 200px; height: 36px; padding: 0 10px 0 0; border: 0; background: none; cursor: pointer; text-align: left; transform: translateX(-5px); border-radius: 8px; }
+.mk i { width: 10px; height: 10px; border-radius: 50%; background: var(--text); flex-shrink: 0; }
+.mk.late i { background: var(--late); }
+.mk .due { font-size: 13px; flex-shrink: 0; }
+.mk .mt { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mk:hover .mt, .mk.sel .mt { text-decoration: underline; text-underline-offset: 3px; }
+.mk .stem { position: absolute; left: 4.5px; top: 36px; width: 1px; background: var(--card-line); }
+.axis { position: relative; height: 28px; border-top: 1px solid var(--card-line); }
+.tick { position: absolute; top: 0; height: 6px; border-left: 1px solid var(--muted); }
+.tick span { position: absolute; top: 8px; left: 0; transform: translateX(-50%); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tick.today { height: 10px; border-left: 2px solid var(--text); }
+.tick.today span { color: var(--text); font-weight: 700; }
+.past { position: absolute; top: 0; bottom: 0; left: 0; background: var(--col); border-radius: 8px 0 0 8px; }
+
+/* Windows */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 20; }
+.win { display: flex; flex-direction: column; gap: 20px; background: var(--pop); color: var(--text); overflow-y: auto; }
+.win.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(460px, 100%); border-left: 1px solid var(--line);
+  padding: calc(24px + env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) 24px;
+}
+.win.modal {
+  position: fixed; z-index: 21; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(640px, calc(100% - 32px)); max-height: min(86vh, 820px);
+  border-radius: 18px; border: 1px solid var(--card-line); box-shadow: var(--shadow); padding: 28px 32px 32px;
+}
+.win.sheet {
+  position: fixed; z-index: 21; left: 0; right: 0; bottom: 0; max-height: 72vh; border-radius: 18px 18px 0 0; border-top: 1px solid var(--card-line); box-shadow: var(--shadow);
+  padding: 12px max(24px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+}
+.win.sheet .sheet-in { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.grab { width: 44px; height: 5px; border-radius: 3px; background: var(--card-line); margin: 0 auto 4px; flex-shrink: 0; }
+.win.pop {
+  position: fixed; z-index: 21; width: min(380px, calc(100vw - 32px)); max-height: min(72vh, 640px); border-radius: 14px; border: 1px solid var(--card-line);
+  box-shadow: var(--shadow); padding: 18px 20px 20px; gap: 16px;
+}
+.win.pop .d-head h2 { font-size: 17px; }
+.split { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.split .board { flex: 999 1 480px; min-width: 0; }
+.win.dock { flex: 1 1 360px; max-width: 100%; position: sticky; top: 16px; max-height: calc(100vh - 32px); border-radius: 14px; border: 1px solid var(--card-line); padding: 22px 22px 24px; }
+
+/* Detail contents */
+.d-head { display: flex; align-items: flex-start; gap: 12px; }
+.d-head h2 { font-size: 21px; font-weight: 700; line-height: 1.35; flex-grow: 1; text-wrap: balance; }
+.x { flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; border: 0; background: none; cursor: pointer; display: grid; place-items: center; margin: -8px -10px 0 0; }
+.x:hover { background: var(--hover); }
+.d-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 3px; gap: 2px; border-radius: 11px; background: var(--field); border: 1px solid var(--card-line); }
+.d-seg button { border: 0; background: none; min-height: 40px; border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 14px; }
+.d-seg button[aria-pressed="true"] { background: var(--tile); color: var(--tile-fg); font-weight: 700; }
+.kv { display: grid; grid-template-columns: 76px 1fr; gap: 8px 12px; margin: 0; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.blk { display: flex; flex-direction: column; gap: 4px; }
+.blk h3 { font-size: 13px; font-weight: 500; color: var(--muted); }
+.blk p { font-size: 15px; line-height: 1.6; }
+.blk p.lead { font-size: 17px; line-height: 1.55; }
+.log { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.metaline { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--muted); }
+.metaline .due { font-size: 14px; }
+.foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: auto; padding-top: 4px; }
+.sel-wrap { display: flex; align-items: center; gap: 10px; flex: 1 1 200px; }
+.sel-wrap label { font-size: 13px; color: var(--muted); }
+.sel-wrap select { flex-grow: 1; min-height: 44px; border-radius: 10px; border: 1px solid var(--card-line); background: var(--field); padding: 0 12px; }
+.notion { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--card-line); background: var(--card); font-weight: 600; }
+.notion:hover { border-color: var(--card-hover); }
+.notion.full { width: 100%; }
+.track { display: flex; align-items: center; gap: 0; }
+.step { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; min-width: 64px; padding: 4px 0; color: var(--muted); font-size: 13px; }
+.step i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--card-hover); background: var(--pop); }
+.step.done i { background: var(--card-hover); }
+.step.cur { color: var(--text); font-weight: 700; }
+.step.cur i { background: var(--text); border-color: var(--text); }
+.bar { flex: 1 1 auto; height: 2px; background: var(--card-line); margin-bottom: 22px; }
+.bar.done { background: var(--card-hover); }
+.hold { margin-left: 14px; border: 1px solid var(--card-line); background: none; border-radius: 8px; min-height: 36px; padding: 0 12px; cursor: pointer; font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.hold[aria-pressed="true"] { background: var(--tile); color: var(--tile-fg); border-color: var(--tile); font-weight: 700; }
+.primary { min-height: 46px; border-radius: 10px; border: 0; background: var(--tile); color: var(--tile-fg); font-weight: 700; cursor: pointer; padding: 0 18px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.grid2 div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.grid2 span { font-size: 12.5px; color: var(--muted); }
+.grid2 b { font-weight: 500; font-size: 14.5px; }
+
+@media (max-width: 640px) {
+  .main { padding: 28px 16px 56px; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); gap: 12px; padding: 16px 12px; }
+  .side .me { display: none; }
+  .win.modal { padding: 22px 20px 24px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .win.drawer { animation: in-r 0.16s ease-out; }
+  .win.sheet { animation: in-b 0.18s ease-out; }
+  .win.modal, .win.pop { animation: in-f 0.12s ease-out; }
+  @keyframes in-r { from { transform: translateX(24px); opacity: 0.6; } }
+  @keyframes in-b { from { transform: translateY(32px); opacity: 0.6; } }
+  @keyframes in-f { from { opacity: 0; } }
+}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <a class="logo" href="#"><img class="w" src="data:image/png;base64,__LOGO_W__" alt="리센느 음원총공팀"><img class="d" src="data:image/png;base64,__LOGO_D__" alt="리센느 음원총공팀"></a>
+    <nav class="nav" id="nav"></nav>
+    <div class="me">
+      <div class="who"><span class="avatar"></span><b>센마인</b></div>
+      <a class="item" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg><span>설정</span></a>
+      <a class="item" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4"></path><path d="M10 8l-4 4 4 4"></path><path d="M6 12h10"></path></svg><span>로그아웃</span></a>
+    </div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<div id="overlay"></div>
+
+<script>
+const ME = "센마인";
+const MY_TEAMS = ["개발"];
+const TEAMS = ["SNS", "총대", "디자인", "개발", "분석", "총무", "기타", "팀 없음"];
+const HELD = { "팀 없음": 26, "디자인": 1, "총대": 2, "SNS": 4, "개발": 1 };
+const DONE = { "총대": 5, "디자인": 2, "SNS": 6, "총무": 2, "개발": 4 };
+const P_HELD = { "담당 없음": 31 };
+const P_DONE = { "담당 없음": 9, "센마인": 1, "총대": 1 };
+const STATUSES = ["시작 전", "진행 중", "보류", "완료"];
+const DATA = __DATA__;
+const TODAY = Date.UTC(2026, 9, 20);
+
+const svg = (d, w = 20, sw = 1.8) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  home: svg('<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path>'),
+  todo: svg('<path d="M10 6h10M10 12h10M10 18h10"></path><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"></path>'),
+  check: svg('<path d="m5 12.5 4.5 4.5L19 7"></path>'),
+  pulse: svg('<path d="M3 12h4l2.5-6 5 12 2.5-6h4"></path>'),
+  chart: svg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path>'),
+  x: svg('<path d="M6 6l12 12M18 6 6 18"></path>', 20, 2),
+  out: svg('<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"></path>', 16, 2),
+};
+const TOOLS = [
+  { name: "MAMA 인증 분류", icon: "check" },
+  { name: "모니터", icon: "pulse" },
+  { name: "차트", icon: "chart" },
+];
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+
+function daysLeft(due) {
+  if (!due) return null;
+  return Math.round((Date.UTC(+due.slice(0, 4), +due.slice(5, 7) - 1, +due.slice(8, 10)) - TODAY) / 86400000);
+}
+function fmtDate(due) {
+  if (!due) return "";
+  const md = +due.slice(5, 7) + "/" + +due.slice(8, 10);
+  return due.length > 10 ? md + " " + due.slice(11, 16) : md;
+}
+
+const items = DATA.map((x, i) => {
+  const n = daysLeft(x.due);
+  const hasDue = n !== null;
+  const late = hasDue && n < 0;
+  return Object.assign(x, {
+    i, n, hasDue, late,
+    dueTag: !hasDue ? "" : late ? -n + "일 지남" : n === 0 ? "오늘" : "D-" + n,
+    dueDate: fmtDate(x.due),
+    dueCls: late ? "late" : hasDue && n > 7 ? "far" : "",
+    doneOn: "",
+    log: [],
+  });
+});
+const isOpen = (x) => x.s === "진행 중" || x.s === "시작 전";
+const byRank = (a, b) => (a.n ?? 1e6) - (b.n ?? 1e6) || (a.s === "진행 중" ? 0 : 1) - (b.s === "진행 중" ? 0 : 1);
+const openItems = () => items.filter(isOpen).sort(byRank);
+const fold = (h, d) => [h ? "보류 " + h : "", d ? "완료 " + d : ""].filter(Boolean).join(" · ");
+
+const pick = (k, list, dflt) => { const v = store.get(k); return list.includes(v) ? v : dflt; };
+const state = {
+  win: "pop",
+  body: "d1",
+  by: pick("todo-by", ["team", "person"], "team"),
+  sel: null,
+  anchor: null,
+  focusClose: false,
+};
+
+function groups() {
+  const list = openItems();
+  if (state.by === "team") {
+    const order = MY_TEAMS.concat(TEAMS.filter((t) => !MY_TEAMS.includes(t)));
+    return order.map((name) => ({
+      name,
+      items: list.filter((x) => (name === "팀 없음" ? !x.teams.length : x.teams.includes(name))),
+      fold: fold(HELD[name], DONE[name]),
+    })).filter((g) => g.items.length || g.fold);
+  }
+  const counts = {};
+  list.forEach((x) => x.who.forEach((w) => (counts[w] = (counts[w] || 0) + 1)));
+  const names = Object.keys(counts).sort((a, b) => (b === ME) - (a === ME) || counts[b] - counts[a]);
+  names.push("담당 없음");
+  return names.map((name) => ({
+    name,
+    items: list.filter((x) => (name === "담당 없음" ? !x.who.length : x.who.includes(name))),
+    fold: fold(P_HELD[name], P_DONE[name]),
+  }));
+}
+
+function card(x) {
+  const top = [];
+  if (x.hasDue) top.push(`<span class="due ${x.dueCls}">${x.dueTag}</span>`);
+  if (x.s === "시작 전") top.push('<span class="wait">시작 전</span>');
+  const who = state.by === "team" && x.who.length ? `<span class="tc-who">${esc(x.who.join(" · "))}</span>` : "";
+  return `<button type="button" class="tc${state.sel === x.i ? " sel" : ""}" data-open="${x.i}">${top.length ? `<span class="tc-top">${top.join("")}</span>` : ""}<span class="tc-title">${esc(x.t)}</span><span class="tc-stage clamp">${esc(x.stage)}</span>${who}</button>`;
+}
+
+function board() {
+  return `<div class="board">${groups().map((g) => `<div class="col"><div class="col-h"><b>${esc(g.name)}</b><span>${g.items.length}</span></div>${g.items.map(card).join("")}${g.fold ? `<button type="button" class="fold">${g.fold}</button>` : ""}</div>`).join("")}</div>`;
+}
+
+// Dated items on a date line: a week back to four weeks ahead.
+function rail() {
+  const from = Date.UTC(2026, 9, 14), to = Date.UTC(2026, 10, 16);
+  const pos = (ms) => ((ms - from) / (to - from)) * 100;
+  const dated = openItems().filter((x) => x.hasDue).sort((a, b) => a.n - b.n);
+  const laneEnd = [];
+  const marks = dated.map((x) => {
+    const p = pos(TODAY + x.n * 86400000);
+    let lane = laneEnd.findIndex((end) => end <= p);
+    if (lane < 0) { lane = laneEnd.length; laneEnd.push(0); }
+    laneEnd[lane] = p + 19;
+    return { x, p, lane };
+  });
+  const h = laneEnd.length * 40;
+  const mk = marks.map(({ x, p, lane }) => `<button type="button" class="mk${x.late ? " late" : ""}${state.sel === x.i ? " sel" : ""}" style="left:${p}%;top:${lane * 40}px" data-open="${x.i}"><span class="stem" style="height:${h - lane * 40 - 32}px"></span><i></i><span class="due ${x.dueCls}">${x.dueTag}</span><span class="mt">${esc(x.t)}</span></button>`).join("");
+  const ticks = [from, TODAY, Date.UTC(2026, 9, 27), Date.UTC(2026, 10, 3), Date.UTC(2026, 10, 10)].map((ms) => {
+    const d = new Date(ms);
+    return `<span class="tick${ms === TODAY ? " today" : ""}" style="left:${pos(ms)}%"><span>${d.getUTCMonth() + 1}/${d.getUTCDate()}</span></span>`;
+  }).join("");
+  return `<div class="rail-wrap"><div class="rail"><div class="past" style="width:${pos(TODAY)}%"></div><div class="rail-lanes" style="height:${h + 4}px">${mk}</div><div class="axis">${ticks}</div></div></div>`;
+}
+
+const closeBtn = (show) => (show ? `<button type="button" class="x" data-close aria-label="닫기">${ICON.x}</button>` : "");
+const dueText = (x) => (x.hasDue ? `<span class="due ${x.dueCls}">${x.dueTag}</span> · ${esc(x.dueDate)}` : "없음");
+const logBlk = (x) => (x.log.length ? `<div class="blk"><h3>바꾼 기록</h3><div class="log">${x.log.map((l) => `<span>${esc(l)}</span>`).join("")}</div></div>` : "");
+const notion = (x, full) => `<a class="notion${full ? " full" : ""}" href="${esc(x.url)}" target="_blank" rel="noopener">노션에서 열기 ${ICON.out}</a>`;
+const nextBlk = (x) => (x.next ? `<div class="blk"><h3>다음 행동</h3><p>${esc(x.next)}</p></div>` : "");
+
+// D1: status buttons on top, label/value table, then text.
+function bodyD1(x, closable) {
+  const seg = STATUSES.map((s) => `<button type="button" data-status="${s}" aria-pressed="${x.s === s}">${s}</button>`).join("");
+  return `<div class="d-head"><h2 id="d-title">${esc(x.t)}</h2>${closeBtn(closable)}</div>
+<div class="d-seg" role="group" aria-label="상태">${seg}</div>
+<dl class="kv"><dt>마감</dt><dd>${dueText(x)}</dd><dt>작업 팀</dt><dd>${esc(x.teams.join(", ") || "없음")}</dd><dt>담당자</dt><dd>${esc(x.who.join(", ") || "없음")}</dd><dt>분류</dt><dd>${esc(x.cat || "없음")}</dd>${x.doneOn ? `<dt>완료일</dt><dd>${x.doneOn}</dd>` : ""}</dl>
+<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>${nextBlk(x)}${logBlk(x)}${notion(x, true)}`;
+}
+
+// D2: one muted line of facts under the title, the stage as the main text, status as a select at the bottom.
+function bodyD2(x, closable) {
+  const facts = [x.hasDue ? `<span><span class="due ${x.dueCls}">${x.dueTag}</span> ${esc(x.dueDate)}</span>` : "", `<span>${esc(x.teams.join(", ") || "팀 없음")}</span>`, `<span>${esc(x.who.join(", ") || "담당 없음")}</span>`, x.cat ? `<span>${esc(x.cat)}</span>` : "", x.doneOn ? `<span>완료 ${x.doneOn}</span>` : ""].join("");
+  const opts = STATUSES.map((s) => `<option${x.s === s ? " selected" : ""}>${s}</option>`).join("");
+  return `<div class="d-head"><h2 id="d-title">${esc(x.t)}</h2>${closeBtn(closable)}</div>
+<div class="metaline">${facts}</div>
+<div class="blk"><p class="lead">${esc(x.stage)}</p></div>${nextBlk(x)}${logBlk(x)}
+<div class="foot"><span class="sel-wrap"><label for="st-${x.i}">상태</label><select id="st-${x.i}" data-status-select>${opts}</select></span>${notion(x, false)}</div>`;
+}
+
+// D3: status as steps with one button for the usual next move; facts in a two-column grid.
+function bodyD3(x, closable) {
+  const flow = ["시작 전", "진행 중", "완료"];
+  const at = flow.indexOf(x.s);
+  let track = "";
+  flow.forEach((s, k) => {
+    if (k) track += `<span class="bar${at >= k ? " done" : ""}"></span>`;
+    track += `<button type="button" class="step${s === x.s ? " cur" : at > k ? " done" : ""}" data-status="${s}"><i></i>${s}</button>`;
+  });
+  track += `<button type="button" class="hold" data-status="보류" aria-pressed="${x.s === "보류"}">보류</button>`;
+  const next = x.s === "진행 중" ? "완료" : "진행 중";
+  const nextLabel = x.s === "완료" ? "진행 중으로 되돌리기" : next === "완료" ? "완료로 바꾸기" : "진행 중으로 바꾸기";
+  return `<div class="d-head"><h2 id="d-title">${esc(x.t)}</h2>${closeBtn(closable)}</div>
+<div class="track" role="group" aria-label="상태">${track}</div>
+<button type="button" class="primary" data-status="${next}">${nextLabel}</button>
+<div class="grid2"><div><span>마감</span><b>${dueText(x)}</b></div><div><span>분류</span><b>${esc(x.cat || "없음")}</b></div><div><span>작업 팀</span><b>${esc(x.teams.join(", ") || "없음")}</b></div><div><span>담당자</span><b>${esc(x.who.join(", ") || "없음")}</b></div>${x.doneOn ? `<div><span>완료일</span><b>${x.doneOn}</b></div>` : ""}</div>
+<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>${nextBlk(x)}${logBlk(x)}${notion(x, true)}`;
+}
+
+function detail(x, closable) {
+  return { d1: bodyD1, d2: bodyD2, d3: bodyD3 }[state.body](x, closable);
+}
+
+function effectiveWin() {
+  const narrow = window.innerWidth < 640;
+  return narrow && state.win !== "dock" ? "sheet" : state.win;
+}
+
+function renderNav() {
+  const late = openItems().filter((x) => x.late).length;
+  document.getElementById("nav").innerHTML =
+    `<a class="item" href="#">${ICON.home}<span>홈</span></a>` +
+    `<a class="item on" href="#" aria-current="page">${ICON.todo}<span>할 일</span><b class="n">${late}</b></a>` +
+    `<p class="label">도구</p>` +
+    TOOLS.map((t) => `<a class="item" href="#">${ICON[t.icon]}<span>${esc(t.name)}</span><i class="dot"></i></a>`).join("");
+}
+
+function render() {
+  document.querySelectorAll("[data-win]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === state.win)));
+  document.querySelectorAll("[data-body]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.body === state.body)));
+  renderNav();
+  const win = effectiveWin();
+  if (win === "dock" && state.sel === null) state.sel = openItems()[0].i;
+  const head = `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="묶는 기준"><button type="button" data-by="team" aria-pressed="${state.by === "team"}">팀별</button><button type="button" data-by="person" aria-pressed="${state.by === "person"}">사람별</button></div></div>`;
+  const main = document.getElementById("main");
+  const overlay = document.getElementById("overlay");
+  const x = state.sel === null ? null : items[state.sel];
+  if (win === "dock") {
+    main.innerHTML = `${head}${rail()}<div class="split">${board()}<aside class="win dock" aria-labelledby="d-title">${detail(x, false)}</aside></div>`;
+    overlay.innerHTML = "";
+    return;
+  }
+  main.innerHTML = head + rail() + board();
+  if (!x) { overlay.innerHTML = ""; return; }
+  const body = detail(x, true);
+  const scrim = win === "pop" ? "" : '<div class="scrim" data-close></div>';
+  overlay.innerHTML = `${scrim}<div class="win ${win}" role="dialog" aria-modal="${win !== "pop"}" aria-labelledby="d-title">${win === "sheet" ? `<div class="grab"></div><div class="sheet-in">${body}</div>` : body}</div>`;
+  if (win === "pop") placePop(overlay.querySelector(".win.pop"));
+  if (state.focusClose) { overlay.querySelector(".x")?.focus(); state.focusClose = false; }
+}
+
+// Put the small window beside the clicked card, flipping to the left or nudging up to stay on screen.
+function placePop(el) {
+  const r = state.anchor;
+  if (!r) return;
+  const w = el.offsetWidth, h = el.offsetHeight, gap = 10, vw = window.innerWidth, vh = window.innerHeight;
+  let left = r.right + gap;
+  if (left + w > vw - 16) left = r.left - w - gap;
+  if (left < 16) left = Math.min(Math.max(16, r.left), vw - w - 16);
+  let top = left === r.right + gap || left === r.left - w - gap ? r.top : r.bottom + gap;
+  top = Math.min(Math.max(16, top), vh - h - 16);
+  el.style.left = left + "px";
+  el.style.top = top + "px";
+}
+
+function setStatus(to) {
+  const x = items[state.sel];
+  if (!x || x.s === to) return;
+  x.log.unshift(`${ME} · 방금 · ${x.s} → ${to}`);
+  if (to === "완료" && !x.doneOn) x.doneOn = "10/20";
+  x.s = to;
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-win],[data-body],[data-by],[data-open],[data-close],[data-status]");
+  if (!t) {
+    if (state.win === "pop" && state.sel !== null && !e.target.closest(".win")) { state.sel = null; render(); }
+    return;
+  }
+  if (t.dataset.win) {
+    state.win = t.dataset.win;
+    store.set("todo-win", state.win);
+    if (state.win !== "dock") state.sel = null;
+  } else if (t.dataset.body) {
+    state.body = t.dataset.body;
+    store.set("todo-body", state.body);
+  } else if (t.dataset.by) {
+    state.by = t.dataset.by;
+    store.set("todo-by", state.by);
+  } else if (t.dataset.open) {
+    state.anchor = t.getBoundingClientRect();
+    state.sel = +t.dataset.open;
+    state.focusClose = state.win !== "dock";
+  } else if (t.hasAttribute("data-close")) {
+    state.sel = null;
+  } else if (t.dataset.status) {
+    setStatus(t.dataset.status);
+  }
+  render();
+});
+document.addEventListener("change", (e) => {
+  if (e.target.matches("[data-status-select]")) { setStatus(e.target.value); render(); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.sel !== null && effectiveWin() !== "dock") { state.sel = null; render(); }
+});
+window.addEventListener("resize", () => { if (state.sel !== null) render(); });
+render();
+</script>
