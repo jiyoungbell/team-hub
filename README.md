@@ -7,8 +7,10 @@
 | Path | |
 |---|---|
 | `/` | Login, or the tool list with whether each tool answers |
-| `/settings` | Dark or light theme |
-| `/admin` | Tools (name, host, order, icon) and users (last seen, role check, force logout). Only `ADMIN_DISCORD_ID` |
+| `/todo` | The Notion TODO board: date rail, columns by team or by person, item window (`#<page id>` opens one) |
+| `/todo/status` | `POST {"page", "from", "to"}` (JSON, same origin). Changes an item's status in Notion |
+| `/settings` | Dark or light theme, my teams |
+| `/admin` | Tools (name, host, order, icon), users (last seen, role check, force logout), Notion sync status and assignee name pairs. Only `ADMIN_DISCORD_ID` |
 | `/login`, `/auth/callback` | Discord OAuth (`identify guilds.members.read`). Only members with the team role get a session |
 | `/logout` | Revokes the hub session (GET or POST) |
 | `/go?to=<host>&next=<path>&state=<state>` | Sends a signed ticket to `https://<host>/_auth/callback`. Only hosts in the `tools` table |
@@ -19,6 +21,8 @@
 | `/api/gate/logout` | For team-gate. `POST {"sid": "..."}` |
 
 Static files in `public/` (styles, logos, `header.js`, `chat-widget.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day.
+
+The to-do board reads a copy of the Notion data source (`NOTION_TODO_SOURCE`) kept in D1. A page view older than a minute refreshes it after the response; the first one waits for it. A failed refresh keeps the last copy and shows the reason on the admin page. A status change first reads the page from Notion and only writes if the status is still the one the person saw. It sets `상태`, fills `완료일` with today (KST) when moving to 완료 with no date, and writes `허브 변경` (`<nickname> 10/20 14:03 진행 중→완료`). Every change is also kept in `todo_changes`.
 
 A tool counts as up when `https://<host>/_auth/health` answers with 2xx. The last result is kept in D1 and pages use it as is; a result older than a minute is rechecked after the response, so a dead home server doesn't slow the hub down.
 
@@ -61,6 +65,7 @@ npm run -s keygen | npx wrangler secret put SIGNING_KEY
 openssl rand -base64 32 | npx wrangler secret put TOKEN_KEY
 openssl rand -base64 32 | npx wrangler secret put GATE_TOKEN   # keep a copy for team-gate
 npx wrangler secret put ADMIN_DISCORD_ID
+npx wrangler secret put NOTION_TOKEN < ~/.config/team-hub/notion.token   # internal integration: read and update content
 ```
 
 Rotating `TOKEN_KEY` makes stored refresh tokens unreadable, so everyone is logged out at the next recheck.
