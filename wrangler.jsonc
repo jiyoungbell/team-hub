@@ -16,7 +16,8 @@
     "HUB_ORIGIN": "https://team.rescene-remine.com",
     "DISCORD_CLIENT_ID": "1420078078511550657",
     "DISCORD_GUILD_ID": "1546419001041748068",
-    "DISCORD_ROLE_ID": "1546422674035707944"
+    "DISCORD_ROLE_ID": "1546422674035707944",
+    "NOTION_TODO_SOURCE": "3f01046f-a724-80b6-899b-000bc9c24041"
   },
   "routes": [{ "pattern": "team.rescene-remine.com", "custom_domain": true }]
 }

@@ -53,6 +53,18 @@ export async function adminPost(env: Env, req: Request, path: string, now: numbe
     return back();
   }
 
+  // Empty user = back to matching by nickname.
+  if (path === "/admin/todo/people") {
+    const name = field("name");
+    const user = field("user");
+    if (!name || name.length > 100) return back();
+    if (!user) await env.DB.prepare("DELETE FROM todo_people WHERE notion_name = ?").bind(name).run();
+    else if (await env.DB.prepare("SELECT 1 FROM users WHERE id = ?").bind(user).first()) {
+      await env.DB.prepare("INSERT OR REPLACE INTO todo_people (notion_name, user_id) VALUES (?, ?)").bind(name, user).run();
+    }
+    return back();
+  }
+
   if (path === "/admin/users/logout") {
     await revokeUser(env, field("id"), now);
     return back();

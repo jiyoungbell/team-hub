@@ -10,6 +10,7 @@ export interface Session {
   name: string;
   avatar: string;
   theme: string | null;
+  teams: string | null;
 }
 
 export function readCookie(req: Request, name: string): string | null {
@@ -43,6 +44,7 @@ interface Row {
   name: string;
   avatar: string;
   theme: string | null;
+  teams: string | null;
   last_seen_at: number | null;
 }
 
@@ -51,7 +53,7 @@ export async function currentSession(env: Env, req: Request, now: number): Promi
   const [sid, secret] = raw?.split(".") ?? [];
   if (!sid || !secret) return null;
   const row = await env.DB.prepare(
-    `SELECT s.id, s.user_id, s.secret_hash, s.expires_at, s.revoked_at, u.name, u.avatar, u.theme, u.last_seen_at
+    `SELECT s.id, s.user_id, s.secret_hash, s.expires_at, s.revoked_at, u.name, u.avatar, u.theme, u.teams, u.last_seen_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
   )
     .bind(sid)
@@ -60,7 +62,7 @@ export async function currentSession(env: Env, req: Request, now: number): Promi
   if ((row.last_seen_at ?? 0) < now - HOUR) {
     await env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(now, row.user_id).run();
   }
-  return { id: row.id, userId: row.user_id, expiresAt: row.expires_at, name: row.name, avatar: row.avatar, theme: row.theme };
+  return { id: row.id, userId: row.user_id, expiresAt: row.expires_at, name: row.name, avatar: row.avatar, theme: row.theme, teams: row.teams };
 }
 
 export const revokeSession = (env: Env, sid: string, now: number) =>

@@ -4,12 +4,14 @@ export interface Env {
   DISCORD_CLIENT_ID: string;
   DISCORD_GUILD_ID: string;
   DISCORD_ROLE_ID: string;
+  NOTION_TODO_SOURCE: string; // data source id of the TODO database
   // Secrets
   DISCORD_CLIENT_SECRET: string;
   SIGNING_KEY: string; // Ed25519 private key as JWK, from `npm run keygen`
   TOKEN_KEY: string; // 32 random bytes, base64
   GATE_TOKEN: string; // shared with team-gate for /api/gate/*
   ADMIN_DISCORD_ID?: string;
+  NOTION_TOKEN?: string;
 }
 
 export const MINUTE = 60_000;
