@@ -45,7 +45,7 @@
       const here = tools.find((t) => t.host === location.host);
       const toolMenu = tools.length
         ? `<details><summary><span class="here">${esc(here?.name ?? "도구")}</span>${chevron}</summary>
-<div class="menu left"><a href="${HUB}/">홈</a><hr>${tools
+<div class="menu left"><a href="${HUB}/">홈</a><a href="${HUB}/todo">할 일</a><hr>${tools
             .map((t) => `<a href="https://${esc(t.host)}/"${t === here ? ' class="on" aria-current="page"' : ""}>${esc(t.name)}</a>`)
             .join("")}</div></details>`
         : "";
