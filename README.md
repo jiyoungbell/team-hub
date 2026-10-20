@@ -10,7 +10,7 @@
 | `/todo` | The Notion TODO board: date rail, columns by team or by person, item window (`#<page id>` opens one) |
 | `/todo/status` | `POST {"page", "from", "to"}` (JSON, same origin). Changes an item's status in Notion |
 | `/settings` | Dark or light theme, my teams |
-| `/admin` | Tools (name, host, order, icon), users (last seen, role check, force logout), Notion sync status and assignee name pairs. Only `ADMIN_DISCORD_ID` |
+| `/admin` | Tools (name, host, order, icon), users (last seen, role check, force logout), Notion sync status and assignee name matching. Only `ADMIN_DISCORD_ID` |
 | `/login`, `/auth/callback` | Discord OAuth (`identify guilds.members.read`). Only members with the team role get a session |
 | `/logout` | Revokes the hub session (GET or POST) |
 | `/go?to=<host>&next=<path>&state=<state>` | Sends a signed ticket to `https://<host>/_auth/callback`. Only hosts in the `tools` table |

@@ -152,7 +152,7 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
       ...assets,
       head: BY_SCRIPT + assets.head,
       mainClass: "todo",
-      heading: `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="묶는 기준"><button type="button" data-by="team" aria-pressed="true">팀별</button><button type="button" data-by="person" aria-pressed="false">사람별</button></div></div>`
+      heading: `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="보기 방식"><button type="button" data-by="team" aria-pressed="true">팀별</button><button type="button" data-by="person" aria-pressed="false">사람별</button></div></div>`
     }
   );
 }
@@ -172,7 +172,7 @@ export function settingsPage(v: Viewer, tools: Tool[], health: Map<string, boole
 <form method="post" action="/settings" class="choices">${choice("dark", "다크")}${choice("light", "라이트")}</form>
 </section>${
       teams.length
-        ? `<section class="block"><h2>내 팀</h2>
+        ? `<section class="block"><h2>팀 선택</h2>
 <form method="post" action="/settings" class="pills">${teams
             .map((t) => {
               const on = v.teams.includes(t);
@@ -214,7 +214,7 @@ function adminTodo(t: AdminTodo) {
     m.failed_at ? `<dt>마지막 실패</dt><dd>${when(m.failed_at)} <span class="muted">${esc(m.error ?? "")}</span></dd>` : ""
   }</dl>
 </section>
-<section class="block"><h2>이름 짝</h2>
+<section class="block"><h2>이름 매칭</h2>
 ${rows || `<p class="empty">담당자 없음</p>`}
 </section>`;
 }

@@ -5,7 +5,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 export const TEAM_ORDER = ["SNS", "총대", "디자인", "개발", "분석", "총무", "기타"];
 const NO_TEAM = "팀 없음";
-const NO_ONE = "담당 없음";
+const NO_ONE = "담당자 없음";
 const RAIL_BACK = 6;
 const RAIL_AHEAD = 27;
 

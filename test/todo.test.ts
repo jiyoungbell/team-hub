@@ -254,7 +254,7 @@ describe("board", () => {
     const sess = await sessionOf(MEMBER);
     let page = await html("/todo", sess);
     let person = page.slice(page.indexOf('data-board="person"'));
-    expect([...person.matchAll(/data-col="([^"]+)"/g)].map((m) => m[1])).toEqual(["앵도", "총대", "담당 없음"]);
+    expect([...person.matchAll(/data-col="([^"]+)"/g)].map((m) => m[1])).toEqual(["앵도", "총대", "담당자 없음"]);
 
     const admin = await sessionOf(ME);
     expect(await html("/admin", admin)).toContain("자동 · 앵도");

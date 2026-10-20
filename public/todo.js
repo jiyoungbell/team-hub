@@ -34,7 +34,7 @@
 <div class="d-seg" role="group" aria-label="상태"${state.busy ? ' aria-busy="true"' : ""}>${seg}</div>${state.err ? '<p class="d-err" role="alert">저장 실패</p>' : ""}
 <dl class="kv"><dt>마감</dt><dd>${due}</dd><dt>작업 팀</dt><dd>${list(x.teams)}</dd><dt>담당자</dt><dd>${list(x.who)}</dd><dt>분류</dt><dd>${esc(x.cat || "없음")}</dd>${x.done ? `<dt>완료일</dt><dd>${esc(x.done)}</dd>` : ""}</dl>
 ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>` : ""}${x.next ? `<div class="blk"><h3>다음 행동</h3><p>${esc(x.next)}</p></div>` : ""}${
-      x.log.length ? `<div class="blk"><h3>바꾼 기록</h3><div class="log">${x.log.map((l) => `<span>${esc(l)}</span>`).join("")}</div></div>` : ""
+      x.log.length ? `<div class="blk"><h3>변경 기록</h3><div class="log">${x.log.map((l) => `<span>${esc(l)}</span>`).join("")}</div></div>` : ""
     }<a class="notion full" href="${esc(x.url)}" target="_blank" rel="noopener">노션에서 열기 ${ICON_OUT}</a>`;
   }
 
