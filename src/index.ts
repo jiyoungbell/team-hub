@@ -23,7 +23,7 @@ import {
   type Person,
   type WriteResult
 } from "./todo";
-import { renderTodo, type TodoView } from "./todo-view";
+import { clientData, renderTodo } from "./todo-view";
 
 const PAGES = new Set(["/", "/todo", "/settings", "/admin"]);
 
@@ -40,16 +40,18 @@ const TODO_WRITES: Record<string, TodoWrite> = {
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
-// The board is drawn here only, so every answer carries the new one.
-const boardJson = (v: TodoView) => ({ rail: v.rail, boards: v.boards, late: v.late, items: v.details, pick: v.pick });
+// Every answer carries the whole copy; the page redraws the board from it.
+const todoJson = async (env: Env, session: Session, now: number, ctx?: ExecutionContext) => {
+  const d = await loadTodo(env, session, now, ctx);
+  return clientData(d, statusesOf(d.options.statuses), session.name);
+};
 
 async function todoWrite(env: Env, req: Request, session: Session, now: number, write: TodoWrite, ctx?: ExecutionContext): Promise<Response> {
   if (req.headers.get("origin") !== env.HUB_ORIGIN) return json({ ok: false }, 403);
   const result = await write(env, session, await req.json().catch(() => null), now);
   if (result.status !== 200 && result.status !== 409) return json({ ok: false }, result.status);
-  const view = renderTodo(await loadTodo(env, session, now, ctx));
   // 409: someone changed it in Notion first; the item now shows Notion's value.
-  return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), ...boardJson(view) }, result.status);
+  return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), data: await todoJson(env, session, now, ctx) }, result.status);
 }
 
 export default {
@@ -76,7 +78,7 @@ export default {
     if (write || (path === "/todo/board" && req.method === "GET")) {
       if (!session) return json({ ok: false }, 401);
       if (write) return todoWrite(env, req, session, now, write, ctx);
-      return json({ ok: true, ...boardJson(renderTodo(await loadTodo(env, session, now, ctx))) });
+      return json({ ok: true, data: await todoJson(env, session, now, ctx) });
     }
 
     if (path === "/login") return session && url.searchParams.get("again") !== "1" ? redirect("/") : login(env, url);
@@ -135,8 +137,7 @@ export default {
       const [health, data] = await Promise.all([toolHealth(env, tools, now, ctx), loadTodo(env, session, now, ctx)]);
       const todo = renderTodo(data, path === "/todo");
       viewer.late = todo.late;
-      const statuses = statusesOf(data.options.statuses);
-      return (path === "/" ? homePage : todoPage)(viewer, tools, health, todo, statuses);
+      return (path === "/" ? homePage : todoPage)(viewer, tools, health, todo, clientData(data, statusesOf(data.options.statuses), session.name));
     }
     const [health, late, meta] = await Promise.all([toolHealth(env, tools, now, ctx), lateCount(env, now), readMeta(env)]);
     viewer.late = late;

@@ -3,6 +3,7 @@ import type { Env } from "../src/env";
 import worker from "../src/index";
 import { kstDate, toItem } from "../src/notion";
 import { syncTodo } from "../src/todo";
+import { renderTodo, type ClientData } from "../src/todo-view";
 import { cookieOf, FakeDiscord, FakeNotion, notionPage, ROLE, testEnv } from "./helpers";
 
 const HUB = "https://team.rescene-remine.com";
@@ -36,8 +37,13 @@ const send = (path: string, cookie: string | null, body: unknown, origin = HUB) 
 const setStatus = (cookie: string | null, body: unknown, origin = HUB) => send("/todo/status", cookie, body, origin);
 
 type Detail = { t: string; s: string; who: string[]; teams: string[]; ds: string | null; log: string[] };
-type Answer = { ok: boolean; key?: string; items: Record<string, Detail>; boards: string; pick: { names: string[]; mine: string } };
-const answer = async (res: Response) => (await res.json()) as Answer;
+// The board as the page draws it from an answer's data.
+const draw = (data: ClientData) => renderTodo({ ...data, changes: new Map(Object.entries(data.changes)) } as unknown as Parameters<typeof renderTodo>[0]);
+async function answer(res: Response) {
+  const body = (await res.json()) as { ok: boolean; key?: string; data: ClientData };
+  const v = draw(body.data);
+  return { ok: body.ok, key: body.key, data: body.data, items: v.details as unknown as Record<string, Detail & { done: string }>, boards: v.boards, pick: v.pick };
+}
 const keyOf = (id: string) => id.replace(/-/g, "");
 const lastPatch = () => notion.calls.filter((c) => c.method === "PATCH").at(-1)!.body!;
 
@@ -165,7 +171,7 @@ describe("status changes", () => {
     await html("/todo", sess);
     const res = await setStatus(sess, { page: A, from: "진행 중", to: "완료" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; items: Record<string, { s: string; log: string[]; done: string }>; boards: string };
+    const body = await answer(res);
     expect(body.ok).toBe(true);
     const key = A.replace(/-/g, "");
     expect(body.items[key]).toMatchObject({ s: "완료", done: "10/20", log: ["센마인 · 10/20 14:03 · 진행 중 → 완료"] });
@@ -206,7 +212,7 @@ describe("status changes", () => {
     notion.pages.get(A)!.properties.상태.status = { name: "보류" };
     const res = await setStatus(sess, { page: A, from: "진행 중", to: "완료" });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { ok: boolean; items: Record<string, { s: string }> };
+    const body = await answer(res);
     expect(body.ok).toBe(false);
     expect(body.items[A.replace(/-/g, "")]!.s).toBe("보류");
     expect(notionCalls("PATCH", "/pages/")).toBe(0);
@@ -337,11 +343,16 @@ describe("adding", () => {
   it("offers Notion's names and hub users, mine first", async () => {
     const sess = await sessionOf(MEMBER);
     const page = await html("/todo", sess);
-    const data = JSON.parse(page.slice(page.indexOf('id="todo-data">') + 15, page.indexOf("</script>", page.indexOf('id="todo-data">'))));
-    expect(data.pick.mine).toBe("앵도");
-    expect(data.pick.names[0]).toBe("앵도");
-    expect(data.pick.names).toEqual(expect.arrayContaining(["센마인", "총대"]));
-    expect(page).toContain('placeholder="할 일 추가"');
+    const data = JSON.parse(page.slice(page.indexOf('id="todo-data">') + 15, page.indexOf("</script>", page.indexOf('id="todo-data">')))) as ClientData;
+    expect(data.mine).toBe("앵도");
+    expect(data.names[0]).toBe("앵도");
+    expect(data.names).toEqual(expect.arrayContaining(["센마인", "총대"]));
+    expect(data.user).toBe("앵도");
+    // The page draws the same board the Worker sent.
+    const boards = page.slice(page.indexOf("<div data-todo-boards>") + 22);
+    expect(boards.startsWith(draw(data).boards)).toBe(true);
+    expect(data.items[0]).not.toHaveProperty("memo");
+    expect(page).toContain('placeholder="할 일 추가   @담당자 #팀"');
   });
 
   it("refuses an empty title and names or teams that aren't on the list", async () => {
@@ -427,7 +438,8 @@ describe("deleting", () => {
     expect(lastPatch()).toEqual({ properties: { "허브 변경": { rich_text: [{ type: "text", text: { content: "센마인 10/20 14:03 삭제" } }] } }, in_trash: true });
     expect(notion.pages.get(B)!.in_trash).toBe(true);
     expect((await answer(res)).items[keyOf(B)]).toBeUndefined();
-    expect(await html("/todo", sess)).not.toContain("음악방송 투표 가이드");
+    const page = await html("/todo", sess);
+    expect(page.slice(page.indexOf("data-todo-boards"), page.indexOf('id="todo-data"'))).not.toContain("음악방송 투표 가이드");
 
     res = await send("/todo/restore", sess, { page: B });
     expect(res.status).toBe(200);

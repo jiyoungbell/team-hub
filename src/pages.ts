@@ -1,7 +1,12 @@
 import type { Tool } from "./gate";
 import { ICON, TOOL_ICONS, toolIcon } from "./icons";
 import type { HubUser, Meta, Person } from "./todo";
-import { inlineJson, type TodoView } from "./todo-view";
+import { inlineJson, type ClientData, type TodoView } from "./todo-view";
+
+// Set at deploy to a hash of the to-do scripts and styles, so a page never runs with an older
+// cached script than the data it was sent (they are cached for 5 minutes).
+declare const ASSET_V: string | undefined;
+const assetV = typeof ASSET_V === "string" ? ASSET_V : "dev";
 
 export interface Viewer {
   name: string;
@@ -108,12 +113,12 @@ ${main}
   );
 }
 
-const todoAssets = (t: TodoView, statuses: string[]) => ({
-  head: `<link rel="stylesheet" href="/todo.css"><script src="/todo.js" defer></script>`,
-  tail: `<div id="todo-overlay"></div><div class="toast" id="todo-toast" role="status" hidden></div><script type="application/json" id="todo-data">${inlineJson({ items: t.details, statuses, pick: t.pick })}</script>`
+const todoAssets = (data: ClientData) => ({
+  head: `<link rel="stylesheet" href="/todo.css?v=${assetV}"><script src="/todo-view.js?v=${assetV}" defer></script><script src="/todo.js?v=${assetV}" defer></script>`,
+  tail: `<div id="todo-overlay"></div><div class="toast" id="todo-toast" role="status" hidden></div><script type="application/json" id="todo-data">${inlineJson(data)}</script>`
 });
 
-export function homePage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, statuses: string[]) {
+export function homePage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, data: ClientData) {
   const cards = tools
     .map(
       (t) => `<a class="card" href="${esc(toolUrl(t))}">
@@ -130,23 +135,23 @@ export function homePage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
     health,
     "홈",
     `<div data-todo-rail>${todo.rail}</div>${tools.length ? `<div class="cards">${cards}</div>` : `<p class="empty">도구 없음</p>`}`,
-    todoAssets(todo, statuses)
+    todoAssets(data)
   );
 }
 
 // The team/person choice is applied before first paint so the board doesn't flip after loading.
 const BY_SCRIPT = `<script>try { if (localStorage.getItem("todo-by") === "person") document.documentElement.dataset.todoBy = "person"; } catch (e) {}</script>`;
 
-export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, statuses: string[]) {
-  const assets = todoAssets(todo, statuses);
+export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, data: ClientData) {
+  const assets = todoAssets(data);
   return shell(
     v,
     "todo",
     tools,
     health,
     "할 일",
-    `<form class="qa" data-qa autocomplete="off"><div class="qa-line">${ICON.plus}<input class="qa-in" name="title" placeholder="할 일 추가" maxlength="200" enterkeyhint="done" aria-label="할 일 추가"><button type="submit" class="qa-go">추가</button></div><div class="qa-more" hidden></div></form>
-<div data-todo-rail>${todo.rail}</div><div data-todo-boards>${todo.boards || ""}</div><p class="empty" data-todo-empty${Object.keys(todo.details).length ? " hidden" : ""}>할 일 없음</p>`,
+    `<form class="qa" data-qa autocomplete="off"><div class="qa-line">${ICON.plus}<input class="qa-in" name="title" placeholder="할 일 추가   @담당자 #팀" maxlength="200" enterkeyhint="done" aria-label="할 일 추가" aria-autocomplete="list"><button type="submit" class="qa-go">추가</button></div><div class="qa-sug" role="listbox" aria-label="고르기" hidden></div><div class="qa-more" inert><div class="qa-more-in"><div class="qa-rows"></div></div></div></form>
+<div data-todo-rail>${todo.rail}</div><div data-todo-boards>${todo.boards || ""}</div><p class="empty" data-todo-empty${data.items.length ? " hidden" : ""}>할 일 없음</p>`,
     {
       ...assets,
       head: BY_SCRIPT + assets.head,

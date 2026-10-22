@@ -14,12 +14,12 @@ import {
   type TodoItem
 } from "./notion";
 import type { Session } from "./session";
+import { DONE, HELD, kstDay, kstStamp, monthDay, TEAM_ORDER, type Change, type Field, type TodoData } from "./todo-common";
+
+export { DONE, HELD, kstDay, kstStamp, TEAM_ORDER, type Change, type TodoData } from "./todo-common";
 
 export const STATUSES = ["시작 전", "진행 중", "보류", "완료"];
-export const DONE = "완료";
-export const HELD = "보류";
 const NEW = "시작 전";
-export const TEAM_ORDER = ["SNS", "총대", "디자인", "개발", "분석", "총무", "기타"];
 const MAX_TITLE = 200;
 
 // Notion's team options in board order.
@@ -115,17 +115,6 @@ export async function syncTodo(env: Env, now: number): Promise<boolean> {
   }
 }
 
-export type Field = "status" | "create" | "title" | "assignees" | "teams" | "due" | "delete" | "restore";
-
-export interface Change {
-  page_id: string;
-  user_name: string;
-  field: Field;
-  from_value: string | null;
-  to_value: string | null;
-  at: number;
-}
-
 export interface Person {
   notion_name: string;
   user_id: string;
@@ -159,20 +148,6 @@ export function assigneeNames(items: TodoItem[], options: Options, people: Perso
     .sort((a, b) => (open.get(b) ?? 0) - (open.get(a) ?? 0) || a.localeCompare(b, "ko"));
   return { names: mine && !mine.includes(",") ? [mine, ...rest] : rest, mine };
 }
-
-export interface TodoData {
-  items: TodoItem[];
-  options: Options;
-  me: string[]; // my Notion names
-  myTeams: string[];
-  changes: Map<string, Change[]>;
-  today: string; // KST YYYY-MM-DD
-  names: string[]; // assignees to pick from, mine first
-  mine: string; // my name among them, on by default when adding
-  teams: string[]; // Notion's team options in board order
-}
-
-export const kstDay = (now: number) => new Date(now + 9 * 3_600_000).toISOString().slice(0, 10);
 
 export const teamsOf = (s: string | null | undefined) => list(s);
 
@@ -231,24 +206,6 @@ export async function lateCount(env: Env, now: number): Promise<number> {
     .first<{ n: number }>();
   return r?.n ?? 0;
 }
-
-const stamp = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Seoul",
-  month: "numeric",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23"
-});
-
-// "10/20 14:03"
-export function kstStamp(ms: number): string {
-  const p = Object.fromEntries(stamp.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  return `${p.month}/${p.day} ${p.hour}:${p.minute}`;
-}
-
-// "10/25"
-export const monthDay = (ymd: string) => `${+ymd.slice(5, 7)}/${+ymd.slice(8, 10)}`;
 
 export type WriteResult = { status: 200 | 409; item?: TodoItem } | { status: 400 | 404 | 502; item?: undefined };
 

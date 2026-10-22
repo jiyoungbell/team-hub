@@ -1,14 +1,18 @@
 // The small window beside a card (a bottom sheet on phones), the team/person switch, folded
-// columns, the add row and every change. Changes show at once and save behind; the board itself
-// is drawn by the Worker, and each save answers with the new one.
+// columns, the add row and every change. The page keeps a copy of the data and draws the board
+// with the Worker's own code (window.TodoView, from /todo-view.js), so a change shows the moment
+// it is made. Saves go out behind it; each answers with the server's copy, which replaces the
+// page's once nothing else is on the way.
 (() => {
   const dataEl = document.getElementById("todo-data");
   const overlay = document.getElementById("todo-overlay");
-  if (!dataEl || !overlay) return;
+  if (!dataEl || !overlay || !window.TodoView) return;
   let data = JSON.parse(dataEl.textContent);
   const root = document.documentElement;
   const onTodo = !!document.querySelector("[data-todo-boards]");
   const toastEl = document.getElementById("todo-toast");
+  const still = matchMedia("(prefers-reduced-motion: reduce)");
+  const EASE = "cubic-bezier(.2,.7,.2,1)";
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const store = {
@@ -21,15 +25,23 @@
   const ICON_PLUS = svg('<path d="M12 5v14M5 12h14"/>', 14, 2.2);
   const ICON_OUT = svg('<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>', 16, 2);
 
-  // Window fields → what /todo/edit calls them.
-  const FIELD = { t: "title", who: "assignees", teams: "teams", ds: "due" };
+  const DONE = "완료";
+  const NEW = "시작 전";
+  // Item fields that can be edited → what /todo/edit calls them.
+  const API = { title: "title", assignees: "assignees", teams: "teams", due_start: "due" };
+  // Lists in the window → item fields.
+  const LIST = { who: "assignees", teams: "teams" };
   const LABEL = { who: "담당자", teams: "작업 팀" };
   const clean = (s) => s.replace(/\s+/g, " ").trim();
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const copy = (v) => (Array.isArray(v) ? v.slice() : v);
   const typing = (el) => !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT");
+  const keyOf = (id) => id.replace(/-/g, "");
+  const item = (key) => data.items.find((x) => keyOf(x.page_id) === key);
+  const stamp = () => new Date().toISOString();
 
   // pick: which list in the window is spread out to choose from ("who" | "teams").
-  const state = { sel: null, anchor: null, rect: null, err: false, pick: null };
+  const state = { sel: null, anchor: null, anchorCol: null, rect: null, err: false, pick: null };
 
   function setBy(by) {
     if (by === "person") root.dataset.todoBy = "person";
@@ -38,23 +50,131 @@
   }
   setBy(root.dataset.todoBy);
 
-  // The D-day tag as the Worker draws it, for a due date changed here (KST).
-  const dayNo = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 864e5;
-  function dueOf(ds) {
-    if (!ds) return null;
-    const n = dayNo(ds) - dayNo(new Date(Date.now() + 9 * 36e5).toISOString());
-    return { tag: n < 0 ? `${-n}일 지남` : n === 0 ? "오늘" : `D-${n}`, cls: n < 0 ? "late" : n > 7 ? "far" : "", date: `${+ds.slice(5, 7)}/${+ds.slice(8, 10)}` };
+  // ---- Drawing
+  const paint = () => window.TodoView.renderTodo({ ...data, changes: new Map(Object.entries(data.changes)) }, true);
+  let view = paint(); // the page arrives drawn by the Worker; this is the same drawing
+  const flashKeys = new Set();
+  const alias = new Map(); // a just-saved item's placeholder key → its real key, so the card stays put
+
+  const colOf = (el) => el.closest("[data-col]")?.dataset.col || "";
+  const ident = (el) => (el.classList.contains("mk") ? "mk:" : "tc:") + (alias.get(el.dataset.open) || el.dataset.open);
+  function measure() {
+    const out = [];
+    for (const el of document.querySelectorAll("[data-open]")) {
+      const r = el.getBoundingClientRect();
+      if (r.width || r.height) out.push({ el, r, id: ident(el), col: colOf(el) });
+    }
+    return out;
   }
-  const dueTag = (x) => (x.due ? `<span class="due ${x.due.cls}">${esc(x.due.tag)}</span>${x.ds && x.ds.length > 10 ? ` <span class="muted">${esc(x.ds.slice(11, 16))}</span>` : ""}` : "");
+
+  // Cards glide from where they were to where they are; ones that left fade out in place, new ones
+  // fade in. A card is matched in the same column first, so one moving between columns slides across.
+  function slide(before) {
+    const olds = new Map();
+    for (const o of before) (olds.get(o.id) || olds.set(o.id, []).get(o.id)).push(o);
+    const pairs = [];
+    const rest = [];
+    for (const n of measure()) {
+      const l = olds.get(n.id);
+      const i = l ? l.findIndex((o) => o.col === n.col) : -1;
+      if (i >= 0) pairs.push([l.splice(i, 1)[0], n]);
+      else rest.push(n);
+    }
+    for (const n of rest) {
+      const l = olds.get(n.id);
+      if (l && l.length) pairs.push([l.shift(), n]);
+      else if (n.r.bottom > 0 && n.r.top < innerHeight) n.el.animate([{ opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1 }], { duration: 220, easing: EASE });
+    }
+    for (const l of olds.values()) l.forEach(ghost);
+    for (const [o, n] of pairs) {
+      const dx = o.r.left - n.r.left;
+      const dy = o.r.top - n.r.top;
+      if (Math.abs(dx) + Math.abs(dy) < 1) continue;
+      if ((o.r.bottom < 0 || o.r.top > innerHeight) && (n.r.bottom < 0 || n.r.top > innerHeight)) continue;
+      n.el.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], { duration: 240, easing: EASE });
+    }
+  }
+
+  function ghost(o) {
+    if (o.r.bottom < 0 || o.r.top > innerHeight) return;
+    const g = o.el.cloneNode(true);
+    g.removeAttribute("data-open");
+    g.classList.remove("sel");
+    g.setAttribute("aria-hidden", "true");
+    g.tabIndex = -1;
+    Object.assign(g.style, {
+      position: "fixed", left: o.r.left + "px", top: o.r.top + "px", width: o.r.width + "px", height: o.r.height + "px",
+      margin: "0", transform: "none", pointerEvents: "none", zIndex: "5",
+    });
+    document.body.append(g);
+    g.animate([{ opacity: 1, scale: 1 }, { opacity: 0, scale: 0.96 }], { duration: 180, easing: "ease-in" }).onfinish = () => g.remove();
+  }
+
+  // Redraws the rail and boards from `data`. Open folds, sideways scroll and the window stay.
+  function draw(opts = {}) {
+    view = paint();
+    const before = still.matches ? null : measure();
+    const where = (b) => b.closest("[data-board]").dataset.board + "|" + b.closest("[data-col]").dataset.col;
+    const openFolds = [...document.querySelectorAll("[data-fold][aria-expanded='true']")].map(where);
+    const scrolls = [...document.querySelectorAll("[data-board], .rail-wrap")].map((el) => [el.dataset.board || "", el.scrollLeft]);
+    const rail = document.querySelector("[data-todo-rail]");
+    if (rail) rail.innerHTML = view.rail;
+    const boards = document.querySelector("[data-todo-boards]");
+    if (boards) boards.innerHTML = view.boards;
+    for (const b of document.querySelectorAll("[data-fold]")) if (openFolds.includes(where(b))) toggleFold(b, true);
+    for (const [name, left] of scrolls) {
+      const el = name ? document.querySelector(`[data-board="${name}"]`) : document.querySelector(".rail-wrap");
+      if (el) el.scrollLeft = left;
+    }
+    const late = document.querySelector("[data-late]");
+    if (late) {
+      late.textContent = view.late || "";
+      late.hidden = !view.late;
+    }
+    const empty = document.querySelector("[data-todo-empty]");
+    if (empty) empty.hidden = data.items.length > 0;
+    document.querySelectorAll('[data-open^="tmp"]').forEach((el) => el.classList.add("pending"));
+    for (const k of flashKeys) cardsOf(k).forEach((el) => el.classList.add("new"));
+    flashKeys.clear();
+    if (before) slide(before);
+
+    if (!state.sel) return;
+    if (!view.details[state.sel]) return close();
+    if (!state.anchor || !state.anchor.isConnected) state.anchor = cardFor(state.sel, state.anchorCol);
+    if (state.anchor) state.rect = state.anchor.getBoundingClientRect();
+    if (opts.window !== false) render(false);
+  }
+
+  const cardsOf = (key) => document.querySelectorAll(`[data-open="${CSS.escape(key)}"]`);
+  function cardFor(key, col) {
+    const shown = [...cardsOf(key)].filter((el) => el.getClientRects().length);
+    return shown.find((el) => colOf(el) === col) || shown[0] || null;
+  }
+
+  // Slides a board sideways to a card's column, so an add always shows where it went.
+  function reveal(el) {
+    const col = el && el.closest(".col");
+    const board = col && col.parentElement;
+    if (!board) return;
+    const left = col.offsetLeft - board.offsetLeft;
+    if (left < board.scrollLeft || left + col.offsetWidth > board.scrollLeft + board.clientWidth) board.scrollTo({ left: Math.max(0, left - 14), behavior: still.matches ? "auto" : "smooth" });
+  }
+
+  // A line in the window's change log right away; the server's own replaces it.
+  function note(it, field, from, to) {
+    const l = data.changes[it.page_id] || (data.changes[it.page_id] = []);
+    l.unshift({ page_id: it.page_id, user_name: data.user, field, from_value: from, to_value: to, at: Date.now() });
+    l.length = Math.min(l.length, 5);
+  }
 
   // ---- Saving
-  // Saves for one item go out one at a time, in order. The board is redrawn from the latest
-  // answer once nothing is left to send, so an older answer never replaces a newer change.
+  // Saves for one item go out one at a time, in order. The server's copy is taken from the latest
+  // answer once nothing is left to send, so an older answer never undoes a newer change.
   let inflight = 0;
   let latest = null;
   let lastFetch = Date.now();
   const queues = new Map();
-  const flashKeys = new Set();
+  const keep = new Map(); // deleted items being brought back: shown even if an answer predates it
 
   function send(path, body, key) {
     inflight++;
@@ -66,12 +186,15 @@
       } catch (e) {}
       inflight--;
       lastFetch = Date.now();
-      if (res && res.ok && res.key && (path === "/todo/items" || path === "/todo/restore")) flashKeys.add(res.key);
-      if (res && res.items) latest = res;
+      if (res && res.ok && res.key && path === "/todo/items") {
+        alias.set(key, res.key);
+        flashKeys.add(res.key);
+      }
+      if (res && res.data) latest = res;
       if (!inflight && latest) {
         const l = latest;
         latest = null;
-        try { apply(l); } catch (e) {}
+        try { apply(l.data); } catch (e) {}
       }
       return res;
     };
@@ -80,14 +203,27 @@
     return p;
   }
 
+  // The server's copy, with changes not sent yet put back on top.
+  function apply(next) {
+    data = next;
+    for (const w of waiting.values()) {
+      const it = item(w.key);
+      if (it) it[w.field] = copy(w.to);
+    }
+    for (const [k, it] of keep) if (!item(k)) data.items.push(it);
+    draw();
+    alias.clear();
+  }
+
   // A change to the open item. On failure the item goes back and the window says so; a 409 on a
   // status means Notion had another one, and the window just shows it.
   async function save(key, path, body, revert) {
     const res = await send(path, body, key);
-    const failed = !res || !res.items;
+    const failed = !res || !res.data;
     if (failed) {
-      const it = data.items[key];
+      const it = item(key);
       if (it && revert) revert(it);
+      draw({ window: false });
     }
     if (state.sel === key) {
       state.err = failed || (!res.ok && path !== "/todo/status");
@@ -102,7 +238,7 @@
     const id = key + "|" + field;
     const w = waiting.get(id);
     if (w) clearTimeout(w.timer);
-    const entry = { key, field, from: w ? w.from : from, to };
+    const entry = { key, field, from: w ? w.from : copy(from), to: copy(to) };
     entry.timer = setTimeout(() => flush(id), delay);
     waiting.set(id, entry);
   }
@@ -111,30 +247,30 @@
     if (!w) return;
     clearTimeout(w.timer);
     waiting.delete(id);
-    const x = data.items[w.key];
-    if (!x || same(w.from, w.to)) return;
-    save(w.key, "/todo/edit", { page: x.page, field: FIELD[w.field], from: w.from, to: w.to }, (it) => {
-      it[w.field] = w.from;
-      if (w.field === "ds") it.due = dueOf(w.from);
-      if (w.field === "t") setCardTitle(w.key, w.from);
-    });
+    const it = item(w.key);
+    if (!it || same(w.from, w.to)) return;
+    const shown = (v) => (Array.isArray(v) ? v.join(", ") : v);
+    note(it, API[w.field], shown(w.from), shown(w.to));
+    // A title is saved as it loses focus, often on the way to a click in the window: leave the
+    // window alone so that click still lands.
+    draw({ window: w.field !== "title" });
+    save(w.key, "/todo/edit", { page: it.page_id, field: API[w.field], from: w.from, to: w.to }, (x) => (x[w.field] = copy(w.from)));
   }
   const flushAll = () => [...waiting.keys()].forEach(flush);
 
-  const cardsOf = (key) => document.querySelectorAll(`[data-open="${CSS.escape(key)}"]`);
-  const setCardTitle = (key, t) => cardsOf(key).forEach((el) => el.querySelectorAll(".tc-title, .mt").forEach((s) => (s.textContent = t)));
-
   // ---- Window
-  function chips(field, x) {
-    const on = x[field];
-    if (state.pick === field) {
-      const all = field === "who" ? data.pick.names : data.pick.teams;
+  function chips(list, x) {
+    const on = list === "who" ? x.who : x.teams;
+    if (state.pick === list) {
+      const all = list === "who" ? view.pick.names : view.pick.teams;
       return `<div class="chips">${[...all, ...on.filter((v) => !all.includes(v))]
-        .map((v) => `<button type="button" class="chip" data-toggle="${field}" data-v="${esc(v)}" aria-pressed="${on.includes(v)}">${esc(v)}</button>`)
+        .map((v) => `<button type="button" class="chip" data-toggle="${list}" data-v="${esc(v)}" aria-pressed="${on.includes(v)}">${esc(v)}</button>`)
         .join("")}</div>`;
     }
-    return `<div class="chips">${on.map((v) => `<button type="button" class="chip on" data-pick="${field}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}<button type="button" class="chip add" data-pick="${field}" aria-label="${LABEL[field]} 고르기">${ICON_PLUS}</button></div>`;
+    return `<div class="chips">${on.map((v) => `<button type="button" class="chip on" data-pick="${list}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}<button type="button" class="chip add" data-pick="${list}" aria-label="${LABEL[list]} 고르기">${ICON_PLUS}</button></div>`;
   }
+
+  const dueTag = (x) => (x.due ? `<span class="due ${x.due.cls}">${esc(x.due.tag)}</span>${x.ds && x.ds.length > 10 ? ` <span class="muted">${esc(x.ds.slice(11, 16))}</span>` : ""}` : "");
 
   // The title is kept apart: while it is being typed, only the rest is redrawn.
   const body = (x) =>
@@ -195,7 +331,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
 
   function render(focus) {
     markSel();
-    const x = state.sel && data.items[state.sel];
+    const x = state.sel && view.details[state.sel];
     const sheet = window.innerWidth < 640;
     // The chat button would sit on top of the sheet's bottom row.
     if (x && sheet) root.dataset.todoSheet = "";
@@ -230,21 +366,11 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     if (focus) overlay.querySelector(".x")?.focus();
   }
 
-  // Slides the board sideways to a new card's column, so an add always shows where it went.
-  function reveal(el) {
-    const col = el && el.closest(".col");
-    const board = col && col.parentElement;
-    if (!board) return;
-    const left = col.offsetLeft - board.offsetLeft;
-    if (left < board.scrollLeft || left + col.offsetWidth > board.scrollLeft + board.clientWidth) board.scrollTo({ left: Math.max(0, left - 14), behavior: "smooth" });
-  }
-
-  const visibleCard = (key) => [...cardsOf(key)].find((el) => el.getClientRects().length) || null;
-
   function open(key, el) {
-    if (!data.items[key]) return;
+    if (!view.details[key] || key.startsWith("tmp")) return;
     state.sel = key;
     state.anchor = el;
+    state.anchorCol = el ? colOf(el) : null;
     state.rect = el ? el.getBoundingClientRect() : null;
     state.err = false;
     state.pick = null;
@@ -258,134 +384,106 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     const t = overlay.querySelector(".d-title");
     if (t && document.activeElement === t) commitTitle(t);
     state.sel = null;
-    state.anchor = state.rect = null;
+    state.anchor = state.rect = state.anchorCol = null;
     state.pick = null;
     if (onTodo && location.hash) history.replaceState(null, "", location.pathname + location.search);
     render(false);
     if (back && back.isConnected) back.focus();
   }
 
-  // New board from the server. Open folds stay open; the window stays where it is; changes not
-  // sent yet stay on top of it.
-  function apply(res) {
-    const where = (b) => b.closest("[data-board]").dataset.board + "|" + b.closest("[data-col]").dataset.col;
-    const openFolds = [...document.querySelectorAll("[data-fold][aria-expanded='true']")].map(where);
-    data = { ...data, items: res.items, pick: res.pick || data.pick };
-    for (const w of waiting.values()) {
-      const it = data.items[w.key];
-      if (!it) continue;
-      it[w.field] = w.to;
-      if (w.field === "ds") it.due = dueOf(w.to);
-    }
-    const rail = document.querySelector("[data-todo-rail]");
-    if (rail) rail.innerHTML = res.rail;
-    const boards = document.querySelector("[data-todo-boards]");
-    if (boards) boards.innerHTML = res.boards;
-    for (const b of document.querySelectorAll("[data-fold]")) if (openFolds.includes(where(b))) toggleFold(b, true);
-    const late = document.querySelector("[data-late]");
-    if (late) {
-      late.textContent = res.late || "";
-      late.hidden = !res.late;
-    }
-    const empty = document.querySelector("[data-todo-empty]");
-    if (empty) empty.hidden = Object.keys(res.items).length > 0;
-    for (const k of flashKeys) {
-      cardsOf(k).forEach((el) => el.classList.add("new"));
-      reveal(visibleCard(k));
-    }
-    flashKeys.clear();
-    for (const k of hiding) cardsOf(k).forEach((el) => (el.hidden = true));
-
-    if (!state.sel) return;
-    if (!data.items[state.sel]) return close();
-    if (!state.anchor || !state.anchor.isConnected) state.anchor = visibleCard(state.sel);
-    if (state.anchor) state.rect = state.anchor.getBoundingClientRect();
-    render(false);
-  }
-
   function setStatus(to) {
     const key = state.sel;
-    const x = data.items[key];
-    if (!x || x.s === to) return;
-    const from = x.s;
-    x.s = to;
+    const it = item(key);
+    if (!it || it.status === to) return;
+    const from = it.status;
+    const doneBefore = it.done_on;
+    it.status = to;
+    if (to === DONE && !it.done_on) it.done_on = data.today;
+    it.edited_at = stamp();
+    note(it, "status", from, to);
     state.err = false;
-    render(false);
-    save(key, "/todo/status", { page: x.page, from, to }, (it) => (it.s = from));
+    draw();
+    save(key, "/todo/status", { page: it.page_id, from, to }, (x) => {
+      x.status = from;
+      x.done_on = doneBefore;
+    });
   }
 
-  function toggle(field, v) {
+  function toggle(list, v) {
     const key = state.sel;
-    const x = data.items[key];
-    if (!x) return;
-    const before = x[field].slice();
-    x[field] = before.includes(v) ? before.filter((n) => n !== v) : [...before, v];
+    const it = item(key);
+    if (!it) return;
+    const f = LIST[list];
+    const before = it[f].slice();
+    it[f] = before.includes(v) ? before.filter((n) => n !== v) : [...before, v];
+    it.edited_at = stamp();
     state.err = false;
-    queueEdit(key, field, before, x[field].slice(), 700);
-    render(false);
+    queueEdit(key, f, before, it[f], 700);
+    draw();
   }
 
   function commitTitle(el) {
     const key = el.closest(".win")?.dataset.key;
-    const x = key && data.items[key];
-    if (!x) return;
+    const it = key && item(key);
+    if (!it) return;
     const v = clean(el.value);
-    if (!v || v === x.t) {
-      el.value = x.t;
+    if (!v || v === it.title) {
+      el.value = it.title;
       fit(el.closest(".win"));
       return;
     }
-    const before = x.t;
-    x.t = v;
+    const before = it.title;
+    it.title = v;
     el.value = v;
-    setCardTitle(key, v);
     state.err = false;
-    queueEdit(key, "t", before, v, 0);
+    queueEdit(key, "title", before, v, 0);
+    draw({ window: false });
   }
 
-  function setDue(v, redraw) {
+  function setDue(v) {
     const key = state.sel;
-    const x = data.items[key];
-    if (!x || (x.ds ? x.ds.slice(0, 10) : null) === v) return;
-    const before = x.ds;
-    x.ds = v;
-    x.due = dueOf(v);
+    const it = item(key);
+    if (!it || (it.due_start ? it.due_start.slice(0, 10) : null) === v) return;
+    const before = it.due_start;
+    it.due_start = v;
+    it.due_end = null;
     state.err = false;
-    queueEdit(key, "ds", before, v, 800);
+    queueEdit(key, "due_start", before, v, 800);
+    draw();
+    // While the date field has focus the window isn't redrawn; the D-day next to it is.
     const tag = overlay.querySelector("[data-due-tag]");
-    if (tag) tag.innerHTML = dueTag(x);
-    if (redraw) render(false);
+    if (tag && view.details[key]) tag.innerHTML = dueTag(view.details[key]);
   }
 
   // ---- Delete, with a few seconds to take it back
-  const hiding = new Set();
-  function hide(key, on) {
-    if (on) hiding.add(key);
-    else hiding.delete(key);
-    cardsOf(key).forEach((el) => (el.hidden = on));
-  }
-
   function remove() {
     const key = state.sel;
-    const x = data.items[key];
-    if (!x) return;
+    const it = item(key);
+    if (!it) return;
     flushAll();
     close();
-    hide(key, true);
-    const gone = send("/todo/delete", { page: x.page }, key).then((res) => {
-      hiding.delete(key);
+    data.items = data.items.filter((x) => x !== it);
+    draw();
+    const gone = send("/todo/delete", { page: it.page_id }, key).then((res) => {
       if (!res || !res.ok) {
-        hide(key, false);
+        if (!item(key)) data.items.push(it);
+        draw();
         toast("삭제 실패");
       }
       return res;
     });
     toast("삭제됨", "되돌리기", () => {
-      hide(key, false);
+      keep.set(key, it);
+      if (!item(key)) data.items.push(it);
+      draw();
       gone.then((res) => {
-        if (!res || !res.ok) return;
-        send("/todo/restore", { page: x.page }, key).then((r) => {
-          if (!r || !r.ok) toast("되돌리기 실패");
+        if (!res || !res.ok) return keep.delete(key);
+        send("/todo/restore", { page: it.page_id }, key).then((r) => {
+          keep.delete(key);
+          if (r && r.ok) return;
+          data.items = data.items.filter((x) => keyOf(x.page_id) !== key);
+          draw();
+          toast("되돌리기 실패");
         });
       });
     });
@@ -412,37 +510,22 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     btn.setAttribute("aria-expanded", String(show));
   }
 
-  // ---- Adding: type, tap people, Enter, and the row is ready for the next one.
-  const NO_TEAM = "팀 없음";
-  const NO_ONE = "담당자 없음";
+  // ---- Adding: type, @name #team or tap chips, Enter, and the row is ready for the next one.
   let tmpN = 0;
-
-  // A faint card in the columns it will land in, until the board comes back with the real one.
-  function pendingCards(tmp, b) {
-    const card = (who) =>
-      `<div class="tc pending" data-pending="${tmp}"><span class="tc-title">${esc(b.title)}</span>${who && b.assignees.length ? `<span class="tc-who">${esc(b.assignees.join(" · "))}</span>` : ""}</div>`;
-    const put = (board, names, none, who) => {
-      for (const n of names.length ? names : [none]) {
-        const col = document.querySelector(`[data-board="${board}"] [data-col="${CSS.escape(n)}"]`);
-        if (!col) continue;
-        // Undated items sort after dated ones, so it goes at the end of the open cards.
-        const fold = col.querySelector(":scope > .fold");
-        if (b.due) col.querySelector(".col-h").insertAdjacentHTML("afterend", card(who));
-        else if (fold) fold.insertAdjacentHTML("beforebegin", card(who));
-        else col.insertAdjacentHTML("beforeend", card(who));
-      }
-    };
-    put("team", b.teams, NO_TEAM, true);
-    put("person", b.assignees, NO_ONE, false);
-  }
-
-  function add(body) {
-    const tmp = "tmp" + ++tmpN;
-    pendingCards(tmp, body);
-    send("/todo/items", body, tmp).then((res) => {
+  function add(b) {
+    const id = "tmp-" + ++tmpN;
+    const key = keyOf(id);
+    data.items.push({
+      page_id: id, title: b.title, status: data.statuses.includes(NEW) ? NEW : data.statuses[0], teams: b.teams, assignees: b.assignees,
+      category: null, due_start: b.due, due_end: null, stage: null, next_action: null, done_on: null, url: "", edited_at: stamp(),
+    });
+    draw();
+    reveal(cardFor(key));
+    send("/todo/items", b, key).then((res) => {
       if (res && res.ok) return;
-      document.querySelectorAll(`[data-pending="${tmp}"]`).forEach((el) => el.remove());
-      toast("추가 실패", "다시", () => add(body));
+      data.items = data.items.filter((x) => x.page_id !== id);
+      draw();
+      toast("추가 실패", "다시", () => add(b));
     });
   }
 
@@ -450,46 +533,158 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
   if (qa) {
     const input = qa.querySelector(".qa-in");
     const more = qa.querySelector(".qa-more");
+    const rows = qa.querySelector(".qa-rows");
+    const sug = qa.querySelector(".qa-sug");
+    // touched: the chips for that list were set by hand or by @/#, so the defaults are gone.
     const fresh = () => ({
-      who: data.pick.mine && data.pick.names.includes(data.pick.mine) ? [data.pick.mine] : [],
-      teams: data.pick.myTeams.filter((t) => data.pick.teams.includes(t)),
+      who: view.pick.mine && view.pick.names.includes(view.pick.mine) ? [view.pick.mine] : [],
+      teams: view.pick.myTeams.filter((t) => view.pick.teams.includes(t)),
       due: "",
+      touched: {},
     });
     let draft = fresh();
     const row = (label, field, all) =>
       `<div class="qa-row"><span class="qa-k">${label}</span><div class="chips">${all
         .map((v) => `<button type="button" class="chip" data-qa-toggle="${field}" data-v="${esc(v)}" aria-pressed="${draft[field].includes(v)}">${esc(v)}</button>`)
         .join("")}</div></div>`;
-    const draw = () => {
-      more.innerHTML =
-        row("담당자", "who", data.pick.names) +
-        row("작업 팀", "teams", data.pick.teams) +
+    const drawRows = () => {
+      rows.innerHTML =
+        row("담당자", "who", view.pick.names) +
+        row("작업 팀", "teams", view.pick.teams) +
         `<div class="qa-row"><span class="qa-k">마감</span><input type="date" class="qa-due" value="${esc(draft.due)}" aria-label="마감일"></div>`;
     };
+    const choose = (f, v) => {
+      if (!draft.touched[f]) {
+        draft[f] = [];
+        draft.touched[f] = true;
+      }
+      if (!draft[f].includes(v)) draft[f].push(v);
+    };
+
+    // @이름 / #팀 while typing. Matches the start of a name, a syllable still being typed
+    // ("까ㅇ", "까어" → 까엉), initial consonants ("ㄲㅇ") or anywhere in it.
+    const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+    const cho = (s) => [...s].map((c) => { const n = c.charCodeAt(0) - 0xac00; return n >= 0 && n < 11172 ? CHO[Math.floor(n / 588)] : c; }).join("");
+    const conjoin = (s) => s.replace(/[ㄱ-ㅎ]/g, (c) => { const i = CHO.indexOf(c); return i < 0 ? c : String.fromCharCode(0x1100 + i); });
+    function candidates(sign, q) {
+      const all = sign === "@" ? view.pick.names : view.pick.teams;
+      const l = q.toLowerCase();
+      if (!l) return all.slice(0, 8);
+      const nl = conjoin(l).normalize("NFD");
+      const onlyCho = [...l].every((c) => CHO.includes(c));
+      const score = (n) => {
+        const m = n.toLowerCase();
+        if (m.startsWith(l)) return 0;
+        if (m.normalize("NFD").startsWith(nl)) return 1;
+        if (onlyCho && cho(m).startsWith(l)) return 2;
+        return m.includes(l) ? 3 : -1;
+      };
+      return all.map((n) => [score(n), n]).filter(([s]) => s >= 0).sort((a, b) => a[0] - b[0]).map(([, n]) => n).slice(0, 8);
+    }
+    const TOKEN = /(^|\s)([@#])([^\s@#]*)$/;
+    let sugTok = null;
+    let sugList = [];
+    let sugAt = 0;
+    function token() {
+      const pos = input.selectionStart ?? input.value.length;
+      const m = TOKEN.exec(input.value.slice(0, pos));
+      return m ? { sign: m[2], q: m[3], start: pos - m[3].length - 1, end: pos } : null;
+    }
+    function drawSug() {
+      if (!sugList.length) {
+        sug.hidden = true;
+        sug.innerHTML = "";
+        return;
+      }
+      sug.innerHTML = sugList.map((n, i) => `<button type="button" class="sug" role="option" data-sug="${esc(n)}" aria-selected="${i === sugAt}">${sugTok.sign}${esc(n)}</button>`).join("");
+      sug.hidden = false;
+    }
+    function updateSug() {
+      sugTok = token();
+      sugList = sugTok ? candidates(sugTok.sign, sugTok.q) : [];
+      sugAt = 0;
+      drawSug();
+    }
+    const hideSug = () => {
+      sugList = [];
+      drawSug();
+    };
+    // The token turns into a chip and leaves the title.
+    function pick(tok, value) {
+      choose(tok.sign === "@" ? "who" : "teams", value);
+      const head = input.value.slice(0, tok.start);
+      const tail = input.value.slice(tok.end).replace(/^\s+/, "");
+      input.value = head + (head && tail && !/\s$/.test(head) ? " " : "") + tail;
+      input.setSelectionRange(head.length, head.length);
+      hideSug();
+      drawRows();
+    }
+
     const show = () => {
-      if (!more.hidden) return;
+      if (qa.classList.contains("on")) return;
       draft = fresh();
-      draw();
-      more.hidden = false;
+      drawRows();
       qa.classList.add("on");
+      more.inert = false;
     };
     const fold = () => {
-      more.hidden = true;
       qa.classList.remove("on");
+      more.inert = true;
+      hideSug();
     };
     const submit = () => {
-      const title = clean(input.value);
-      if (!title) return;
+      hideSug();
+      // @이름 #팀 still in the text: an exact or only match becomes a chip; anything else stays as typed.
+      const text = input.value.replace(/(^|\s)([@#])([^\s@#]+)/g, (all, sp, sign, q) => {
+        const c = candidates(sign, q);
+        const v = c.find((n) => n.toLowerCase() === q.toLowerCase()) || (c.length === 1 ? c[0] : null);
+        if (!v) return all;
+        choose(sign === "@" ? "who" : "teams", v);
+        return sp;
+      });
+      const title = clean(text);
+      if (!title) return drawRows();
       add({ title, assignees: draft.who.slice(), teams: draft.teams.slice(), due: draft.due || null });
       input.value = "";
       draft = fresh();
-      draw();
+      drawRows();
       input.focus();
     };
+
     input.addEventListener("focus", show);
+    input.addEventListener("input", (e) => {
+      // "@까엉 " with a space: an exact name becomes a chip at once.
+      const pos = input.selectionStart ?? input.value.length;
+      const m = !e.isComposing && /(^|\s)([@#])([^\s@#]+)\s$/.exec(input.value.slice(0, pos));
+      if (m) {
+        const all = m[2] === "@" ? view.pick.names : view.pick.teams;
+        const exact = all.find((n) => n.toLowerCase() === m[3].toLowerCase());
+        if (exact) return pick({ sign: m[2], start: pos - m[3].length - 2, end: pos }, exact);
+      }
+      updateSug();
+    });
+    input.addEventListener("click", updateSug);
+    input.addEventListener("keyup", (e) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) updateSug();
+    });
     input.addEventListener("keydown", (e) => {
       // Enter that only finishes a Korean syllable doesn't save.
       if (e.isComposing || e.keyCode === 229) return;
+      if (sugList.length) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          sugAt = (sugAt + (e.key === "ArrowDown" ? 1 : -1) + sugList.length) % sugList.length;
+          return drawSug();
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          return pick(sugTok, sugList[sugAt]);
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          return hideSug();
+        }
+      }
       if (e.key === "Enter") {
         e.preventDefault();
         submit();
@@ -503,29 +698,34 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
       e.preventDefault();
       submit();
     });
-    // Chips don't take focus, so the phone keyboard stays up and Enter still saves.
+    // Chips and suggestions don't take focus, so the phone keyboard stays up and Enter still saves.
     for (const ev of ["pointerdown", "mousedown"]) {
       qa.addEventListener(ev, (e) => {
-        if (e.target.closest("[data-qa-toggle], .qa-go")) e.preventDefault();
+        if (e.target.closest("[data-qa-toggle], [data-sug], .qa-go")) e.preventDefault();
         else if (e.target.closest(".qa-line") && e.target !== input) {
           e.preventDefault();
           input.focus();
         }
       });
     }
-    more.addEventListener("click", (e) => {
+    qa.addEventListener("click", (e) => {
+      const s = e.target.closest("[data-sug]");
+      if (s) return pick(sugTok, s.dataset.sug);
       const c = e.target.closest("[data-qa-toggle]");
       if (!c) return;
       const f = c.dataset.qaToggle;
       const v = c.dataset.v;
+      draft.touched[f] = true;
       draft[f] = draft[f].includes(v) ? draft[f].filter((n) => n !== v) : [...draft[f], v];
       c.setAttribute("aria-pressed", String(draft[f].includes(v)));
     });
-    more.addEventListener("change", (e) => {
+    rows.addEventListener("change", (e) => {
       if (e.target.matches(".qa-due")) draft.due = e.target.value;
     });
     qa.addEventListener("focusout", (e) => {
-      if (!qa.contains(e.relatedTarget) && !clean(input.value)) fold();
+      if (qa.contains(e.relatedTarget)) return;
+      hideSug();
+      if (!clean(input.value)) fold();
     });
   }
 
@@ -559,7 +759,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     } else if (t.dataset.toggle) {
       toggle(t.dataset.toggle, t.dataset.v);
     } else if (t.hasAttribute("data-due-clear")) {
-      setDue(null, true);
+      setDue(null);
     } else if (t.hasAttribute("data-delete")) {
       remove();
     } else if (t.hasAttribute("data-toast")) {
@@ -585,14 +785,14 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     if (e.target.matches(".d-title")) commitTitle(e.target);
   });
   overlay.addEventListener("change", (e) => {
-    if (e.target.matches("[data-due]")) setDue(e.target.value || null, false);
+    if (e.target.matches("[data-due]")) setDue(e.target.value || null);
   });
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !state.sel) return;
     if (e.target.matches && e.target.matches(".d-title")) {
       // Back to the saved title, window stays open.
-      e.target.value = data.items[state.sel]?.t ?? e.target.value;
+      e.target.value = view.details[state.sel]?.t ?? e.target.value;
       e.target.blur();
       return;
     }
@@ -629,14 +829,14 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     fetch("/todo/board")
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => {
-        if (res && res.items && !inflight && !waiting.size && !typing(document.activeElement)) apply(res);
+        if (res && res.data && !inflight && !waiting.size && !typing(document.activeElement)) apply(res.data);
       })
       .catch(() => {});
   });
 
   // #<item> opens that item, unfolding its column if needed.
   const key = decodeURIComponent(location.hash.slice(1));
-  if (onTodo && key && data.items[key]) document.fonts.ready.then(() => openFromHash(key));
+  if (onTodo && key && view.details[key]) document.fonts.ready.then(() => openFromHash(key));
 
   function openFromHash(key) {
     const els = [...cardsOf(key)];

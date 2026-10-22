@@ -1,5 +1,5 @@
 import type { TodoItem } from "./notion";
-import { DONE, HELD, kstStamp, monthDay, TEAM_ORDER, type Change, type TodoData } from "./todo";
+import { DONE, HELD, kstStamp, monthDay, TEAM_ORDER, type Change, type TodoData } from "./todo-common";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -197,6 +197,23 @@ export function renderTodo(d: TodoData, withBoards = true): TodoView {
     pick: { names: d.names, mine: d.mine, teams: d.teams.length ? d.teams : TEAM_ORDER, myTeams: d.myTeams }
   };
 }
+
+// The page's copy of the data, sent with the page and with every save. The page draws the board
+// from it with renderTodo (bundled into /todo-view.js), so a change shows before Notion answers.
+export const clientData = (d: TodoData, statuses: string[], user: string) => ({
+  items: d.items.map(({ memo, basis, started, first_seen, hub_change, ...x }) => x),
+  changes: Object.fromEntries(d.changes),
+  options: d.options,
+  me: d.me,
+  myTeams: d.myTeams,
+  today: d.today,
+  names: d.names,
+  mine: d.mine,
+  teams: d.teams,
+  statuses,
+  user // my nickname, for the change log until the server's comes back
+});
+export type ClientData = ReturnType<typeof clientData>;
 
 // JSON inside <script>: nothing in it may close the tag.
 export const inlineJson = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
