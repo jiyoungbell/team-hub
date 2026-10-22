@@ -24,11 +24,11 @@
 | `/api/gate/sync?since=<cursor>` | For team-gate, `Authorization: Bearer <GATE_TOKEN>`. Revoked sids, changed profiles, tools |
 | `/api/gate/logout` | For team-gate. `POST {"sid": "..."}` |
 
-Static files in `public/` (styles, logos, `header.js`, `chat-widget.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day.
+Static files in `public/` (styles, logos, `header.js`, `chat-widget.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day. The to-do page loads its files with `?v=<hash>` (`ASSET_V`, set by `npm run deploy`), so a page never runs an older cached script than its data.
 
 The to-do board reads a copy of the Notion data source (`NOTION_TODO_SOURCE`) kept in D1. A page view older than a minute refreshes it after the response; the first one waits for it. A failed refresh keeps the last copy and shows the reason on the admin page. A status change first reads the page from Notion and only writes if the status is still the one the person saw. It sets `상태`, fills `완료일` with today (KST) when moving to 완료 with no date, and writes `허브 변경` (`<nickname> 10/20 14:03 진행 중→완료`). Every change is also kept in `todo_changes`.
 
-Adds, edits and deletes write `허브 변경` the same way (`추가`, `제목 변경`, `담당자→까엉, 리부`, `마감일→10/25`, `삭제`, `되돌림`). A title or due date is only written if Notion still has what the person saw; assignees and teams apply just what was added and removed to Notion's current list. Assignees to pick are Notion's options plus every hub user (by their matched Notion name, else nickname). A sync leaves alone pages the hub changed after the sync started, and rewrites only rows that differ. The page shows each change at once and saves behind it; every write answers with the new board.
+Adds, edits and deletes write `허브 변경` the same way (`추가`, `제목 변경`, `담당자→까엉, 리부`, `마감일→10/25`, `삭제`, `되돌림`). A title or due date is only written if Notion still has what the person saw; assignees and teams apply just what was added and removed to Notion's current list. Assignees to pick are Notion's options plus every hub user (by their matched Notion name, else nickname). A sync leaves alone pages the hub changed after the sync started, and rewrites only rows that differ. Every write answers with the whole copy (`clientData`). The page draws the board itself with the same `renderTodo` the Worker uses (bundled into `public/todo-view.js` by `npm run build`), so a change shows the moment it's made and Notion's answer catches up behind it; cards slide to their new places. The add row also takes `@이름` and `#팀` while typing.
 
 A tool counts as up when `https://<host>/_auth/health` answers with 2xx. The last result is kept in D1 and pages use it as is; a result older than a minute is rechecked after the response, so a dead home server doesn't slow the hub down.
 
@@ -94,7 +94,7 @@ npm install
 npm test
 npm run check
 npx wrangler d1 migrations apply team-hub --local
-npm run dev   # secrets in .dev.vars, plus HUB_ORIGIN=http://localhost:8787
+npm run dev   # builds public/todo-view.js; secrets in .dev.vars, plus HUB_ORIGIN=http://localhost:8787
 ```
 
 `npm run deploy` applies new migrations to the remote D1 first, then deploys. A push to `main` does the same from GitHub Actions after the tests pass (`.github/workflows/ci.yml`, secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`).
