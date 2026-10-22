@@ -162,10 +162,13 @@ export function notionPage(id: string, f: FakeItem): Json {
   };
 }
 
+const withPlain = (parts: Json[]) => parts.map((r) => ({ ...r, plain_text: r.text.content }));
+
 // A pretend Notion API holding one data source.
 export class FakeNotion {
   pages = new Map<string, Json>();
   status: number | null = null;
+  limited = 0; // answer this many requests with 429 first
   missing: string[] = [];
   calls: { method: string; path: string; body: Json | null }[] = [];
   statuses = ["시작 전", "보류", "진행 중", "완료"];
@@ -176,6 +179,16 @@ export class FakeNotion {
     this.pages.set(id, notionPage(id, f));
   }
 
+  private write(page: Json, body: Json) {
+    for (const [k, v] of Object.entries((body.properties ?? {}) as Json)) {
+      page.properties[k] = { ...page.properties[k], ...v };
+      if (v.rich_text) page.properties[k].rich_text = withPlain(v.rich_text);
+      if (v.title) page.properties[k].title = withPlain(v.title);
+    }
+    if (typeof body.in_trash === "boolean") page.in_trash = body.in_trash;
+    page.last_edited_time = new Date().toISOString();
+  }
+
   fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
@@ -183,6 +196,10 @@ export class FakeNotion {
     this.calls.push({ method, path: url.pathname + url.search, body });
     if (new Headers(init?.headers).get("authorization") !== "Bearer notion-token") return Response.json({ code: "unauthorized", message: "API token is invalid." }, { status: 401 });
     if (this.status) return Response.json({ code: "internal_server_error", message: "boom" }, { status: this.status });
+    if (this.limited > 0) {
+      this.limited--;
+      return Response.json({ code: "rate_limited", message: "slow down" }, { status: 429, headers: { "retry-after": "0.01" } });
+    }
 
     if (url.pathname === `/v1/data_sources/${SOURCE}` && method === "GET") {
       const props: Json = {};
@@ -203,17 +220,20 @@ export class FakeNotion {
       const more = start + size < all.length;
       return Response.json({ object: "list", results, has_more: more, next_cursor: more ? String(start + size) : null });
     }
+    if (url.pathname === "/v1/pages" && method === "POST") {
+      if (body!.parent?.data_source_id !== SOURCE) return Response.json({ code: "validation_error", message: "parent" }, { status: 400 });
+      const page = notionPage(crypto.randomUUID(), {});
+      page.properties["최초 확인일"].date = null;
+      page.properties["일정 근거"].rich_text = [];
+      this.write(page, body!);
+      this.pages.set(page.id, page);
+      return Response.json(page);
+    }
     const m = /^\/v1\/pages\/([\w-]+)$/.exec(url.pathname);
     if (m) {
       const page = this.pages.get(m[1]!);
       if (!page) return Response.json({ code: "object_not_found", message: "nope" }, { status: 404 });
-      if (method === "PATCH") {
-        for (const [k, v] of Object.entries(body!.properties as Json)) {
-          page.properties[k] = { ...page.properties[k], ...v };
-          if (v.rich_text) page.properties[k].rich_text = v.rich_text.map((r: Json) => ({ ...r, plain_text: r.text.content }));
-        }
-        page.last_edited_time = new Date().toISOString();
-      }
+      if (method === "PATCH") this.write(page, body!);
       return Response.json(page);
     }
     throw new Error(`unexpected notion ${method} ${url.pathname}`);

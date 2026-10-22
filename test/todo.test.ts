@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
 import worker from "../src/index";
 import { kstDate, toItem } from "../src/notion";
+import { syncTodo } from "../src/todo";
 import { cookieOf, FakeDiscord, FakeNotion, notionPage, ROLE, testEnv } from "./helpers";
 
 const HUB = "https://team.rescene-remine.com";
@@ -30,8 +31,15 @@ const html = async (path: string, cookie: string | null) => (await call(path, { 
 const post = (path: string, cookie: string | null, fields: Record<string, string>, origin = HUB) =>
   call(path, { method: "POST", cookie, headers: { origin }, body: new URLSearchParams(fields) });
 
-const setStatus = (cookie: string | null, body: unknown, origin = HUB) =>
-  call("/todo/status", { method: "POST", cookie, headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+const send = (path: string, cookie: string | null, body: unknown, origin = HUB) =>
+  call(path, { method: "POST", cookie, headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+const setStatus = (cookie: string | null, body: unknown, origin = HUB) => send("/todo/status", cookie, body, origin);
+
+type Detail = { t: string; s: string; who: string[]; teams: string[]; ds: string | null; log: string[] };
+type Answer = { ok: boolean; key?: string; items: Record<string, Detail>; boards: string; pick: { names: string[]; mine: string } };
+const answer = async (res: Response) => (await res.json()) as Answer;
+const keyOf = (id: string) => id.replace(/-/g, "");
+const lastPatch = () => notion.calls.filter((c) => c.method === "PATCH").at(-1)!.body!;
 
 async function sessionOf(userId: string): Promise<string | null> {
   const start = await call("/login");
@@ -168,11 +176,12 @@ describe("status changes", () => {
       "허브 변경": { rich_text: [{ type: "text", text: { content: "센마인 10/20 14:03 진행 중→완료" } }] },
       완료일: { date: { start: "2026-10-20" } }
     });
-    expect(await env.DB.prepare("SELECT user_id, user_name, from_status, to_status FROM todo_changes").first()).toEqual({
+    expect(await env.DB.prepare("SELECT user_id, user_name, field, from_value, to_value FROM todo_changes").first()).toEqual({
       user_id: ME,
       user_name: "센마인",
-      from_status: "진행 중",
-      to_status: "완료"
+      field: "status",
+      from_value: "진행 중",
+      to_value: "완료"
     });
     // Off the board, into the fold.
     const page = await html("/todo", sess);
@@ -297,5 +306,171 @@ describe("settings", () => {
     expect(await html("/settings", sess)).toContain('value="개발" aria-pressed="true"');
     await post("/settings", sess, { team: "개발" });
     expect((await env.DB.prepare("SELECT teams FROM users WHERE id = ?").bind(ME).first())!.teams).toBe('["SNS"]');
+  });
+});
+
+describe("adding", () => {
+  it("creates the item in Notion with who added it, and shows it", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    const res = await send("/todo/items", sess, { title: "  포스터   시안 올리기 ", assignees: ["센마인", "앵도"], teams: ["디자인"], due: "2026-10-25" });
+    expect(res.status).toBe(200);
+    const body = await answer(res);
+    expect(body.ok).toBe(true);
+    const create = notion.calls.find((c) => c.method === "POST" && c.path === "/v1/pages")!;
+    expect(create.body).toEqual({
+      parent: { type: "data_source_id", data_source_id: env.NOTION_TODO_SOURCE },
+      properties: {
+        "할 일": { title: [{ type: "text", text: { content: "포스터 시안 올리기" } }] },
+        상태: { status: { name: "시작 전" } },
+        "작업 팀": { multi_select: [{ name: "디자인" }] },
+        담당자: { multi_select: [{ name: "센마인" }, { name: "앵도" }] },
+        마감일: { date: { start: "2026-10-25" } },
+        "허브 변경": { rich_text: [{ type: "text", text: { content: "센마인 10/20 14:03 추가" } }] }
+      }
+    });
+    expect(body.items[body.key!]).toMatchObject({ t: "포스터 시안 올리기", s: "시작 전", who: ["센마인", "앵도"], log: ["센마인 · 10/20 14:03 · 추가"] });
+    expect(column(body.boards, "team", "디자인")).toContain("포스터 시안 올리기");
+    expect(column(await html("/todo", sess), "person", "앵도")).toContain("포스터 시안 올리기");
+  });
+
+  it("offers Notion's names and hub users, mine first", async () => {
+    const sess = await sessionOf(MEMBER);
+    const page = await html("/todo", sess);
+    const data = JSON.parse(page.slice(page.indexOf('id="todo-data">') + 15, page.indexOf("</script>", page.indexOf('id="todo-data">'))));
+    expect(data.pick.mine).toBe("앵도");
+    expect(data.pick.names[0]).toBe("앵도");
+    expect(data.pick.names).toEqual(expect.arrayContaining(["센마인", "총대"]));
+    expect(page).toContain('placeholder="할 일 추가"');
+  });
+
+  it("refuses an empty title and names or teams that aren't on the list", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    const ok = { title: "x", assignees: [], teams: [], due: null };
+    expect((await send("/todo/items", sess, { ...ok, title: "   " })).status).toBe(400);
+    expect((await send("/todo/items", sess, { ...ok, title: "가".repeat(201) })).status).toBe(400);
+    expect((await send("/todo/items", sess, { ...ok, assignees: ["모르는 사람"] })).status).toBe(400);
+    expect((await send("/todo/items", sess, { ...ok, teams: ["없는 팀"] })).status).toBe(400);
+    expect((await send("/todo/items", sess, { ...ok, due: "10/25" })).status).toBe(400);
+    expect((await send("/todo/items", sess, ok, "https://jachong.rescene-remine.com")).status).toBe(403);
+    expect((await send("/todo/items", null, ok)).status).toBe(401);
+    expect(notion.calls.filter((c) => c.path === "/v1/pages").length).toBe(0);
+  });
+
+  it("waits once when Notion says slow down", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    notion.limited = 1;
+    expect((await send("/todo/items", sess, { title: "x", assignees: [], teams: [], due: null })).status).toBe(200);
+    notion.limited = 2;
+    expect((await send("/todo/items", sess, { title: "y", assignees: [], teams: [], due: null })).status).toBe(502);
+  });
+});
+
+describe("editing", () => {
+  it("renames, keeping a title changed in Notion meanwhile", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    let body = await answer(await send("/todo/edit", sess, { page: B, field: "title", from: "음악방송 투표 가이드", to: "음방 투표 가이드" }));
+    expect(lastPatch().properties).toEqual({
+      "할 일": { title: [{ type: "text", text: { content: "음방 투표 가이드" } }] },
+      "허브 변경": { rich_text: [{ type: "text", text: { content: "센마인 10/20 14:03 제목 변경" } }] }
+    });
+    expect(body.items[keyOf(B)]).toMatchObject({ t: "음방 투표 가이드", log: ["센마인 · 10/20 14:03 · 제목 변경"] });
+
+    notion.pages.get(B)!.properties["할 일"].title = [{ plain_text: "노션에서 바꿈" }];
+    const res = await send("/todo/edit", sess, { page: B, field: "title", from: "음방 투표 가이드", to: "또 바꿈" });
+    expect(res.status).toBe(409);
+    body = await answer(res);
+    expect(body.items[keyOf(B)]!.t).toBe("노션에서 바꿈");
+  });
+
+  it("applies only the names added and removed, so a change made meanwhile stays", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    // Someone adds 총대 in Notion while the window shows only 앵도.
+    notion.pages.get(B)!.properties.담당자.multi_select = [{ name: "앵도" }, { name: "총대" }];
+    const body = await answer(await send("/todo/edit", sess, { page: B, field: "assignees", from: ["앵도"], to: ["센마인"] }));
+    expect(lastPatch().properties.담당자).toEqual({ multi_select: [{ name: "총대" }, { name: "센마인" }] });
+    expect(lastPatch().properties["허브 변경"].rich_text[0].text.content).toBe("센마인 10/20 14:03 담당자→총대, 센마인");
+    expect(body.items[keyOf(B)]).toMatchObject({ who: ["총대", "센마인"], log: ["센마인 · 10/20 14:03 · 담당자 → 총대, 센마인"] });
+
+    await send("/todo/edit", sess, { page: B, field: "teams", from: ["디자인"], to: [] });
+    expect(lastPatch().properties["작업 팀"]).toEqual({ multi_select: [] });
+    expect((await send("/todo/edit", sess, { page: B, field: "teams", from: [], to: ["없는 팀"] })).status).toBe(400);
+  });
+
+  it("sets and clears the due date", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    // A due date with a time compares by its day.
+    let body = await answer(await send("/todo/edit", sess, { page: A, field: "due", from: "2026-10-22T23:59", to: "2026-10-24" }));
+    expect(lastPatch().properties.마감일).toEqual({ date: { start: "2026-10-24" } });
+    expect(lastPatch().properties["허브 변경"].rich_text[0].text.content).toBe("센마인 10/20 14:03 마감일→10/24");
+    expect(body.items[keyOf(A)]!.ds).toBe("2026-10-24");
+    body = await answer(await send("/todo/edit", sess, { page: A, field: "due", from: "2026-10-24", to: null }));
+    expect(lastPatch().properties.마감일).toEqual({ date: null });
+    expect(body.items[keyOf(A)]).toMatchObject({ ds: null, log: ["센마인 · 10/20 14:03 · 마감 → 없음", "센마인 · 10/20 14:03 · 마감 → 10/24"] });
+    expect((await send("/todo/edit", sess, { page: A, field: "due", from: "2026-10-24", to: "2026-10-30" })).status).toBe(409);
+    expect((await send("/todo/edit", sess, { page: A, field: "memo", from: "", to: "x" })).status).toBe(400);
+    expect((await send("/todo/edit", sess, { page: "other", field: "title", from: "a", to: "b" })).status).toBe(404);
+  });
+});
+
+describe("deleting", () => {
+  it("moves the item to Notion's trash and brings it back", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    let res = await send("/todo/delete", sess, { page: B });
+    expect(res.status).toBe(200);
+    expect(lastPatch()).toEqual({ properties: { "허브 변경": { rich_text: [{ type: "text", text: { content: "센마인 10/20 14:03 삭제" } }] } }, in_trash: true });
+    expect(notion.pages.get(B)!.in_trash).toBe(true);
+    expect((await answer(res)).items[keyOf(B)]).toBeUndefined();
+    expect(await html("/todo", sess)).not.toContain("음악방송 투표 가이드");
+
+    res = await send("/todo/restore", sess, { page: B });
+    expect(res.status).toBe(200);
+    expect(notion.pages.get(B)!.in_trash).toBe(false);
+    expect((await answer(res)).items[keyOf(B)]!.log).toEqual(["센마인 · 10/20 14:03 · 되돌림", "센마인 · 10/20 14:03 · 삭제"]);
+    expect(await html("/todo", sess)).toContain("음악방송 투표 가이드");
+  });
+
+  it("only restores pages deleted from the hub", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    expect((await send("/todo/restore", sess, { page: A })).status).toBe(404);
+    expect((await send("/todo/delete", sess, { page: "other" })).status).toBe(404);
+    expect(notionCalls("PATCH", "/pages/")).toBe(0);
+  });
+});
+
+describe("sync and hub changes", () => {
+  it("leaves pages the hub changed after the sync started alone, and drops them once a later sync agrees", async () => {
+    const sess = await sessionOf(ME);
+    await html("/todo", sess);
+    const { key } = await answer(await send("/todo/items", sess, { title: "새로 넣은 일", assignees: [], teams: [], due: null }));
+    const id = [...notion.pages.keys()].find((k) => keyOf(k) === key)!;
+    // A sync that fetched just before the add: the new page isn't in it, B has a new title.
+    notion.pages.delete(id);
+    notion.add(B, { title: "노션에서 바뀐 제목", status: "진행 중" });
+    await env.DB.prepare("UPDATE todo_meta SET synced_at = 0").run();
+    expect(await syncTodo(env, NOW - 1)).toBe(true);
+    const titles = async () => (await env.DB.prepare("SELECT title FROM todo_items ORDER BY title").all<{ title: string }>()).results.map((r) => r.title);
+    expect(await titles()).toEqual(expect.arrayContaining(["새로 넣은 일", "노션에서 바뀐 제목"]));
+
+    // Really gone from Notion: a sync that started after the add follows Notion.
+    expect(await syncTodo(env, NOW + 61_000)).toBe(true);
+    expect(await titles()).not.toContain("새로 넣은 일");
+  });
+
+  it("serves the board as JSON for a tab coming back", async () => {
+    const sess = await sessionOf(ME);
+    expect((await call("/todo/board")).status).toBe(401);
+    const res = await call("/todo/board", { cookie: sess });
+    expect(res.status).toBe(200);
+    const body = await answer(res);
+    expect(body.items[keyOf(A)]!.t).toBe("MAMA 1차 인증 운영");
+    expect(body.boards).toContain('data-board="team"');
   });
 });

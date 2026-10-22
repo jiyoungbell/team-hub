@@ -58,7 +58,7 @@ export interface Schema {
 
 type Json = Record<string, any>;
 
-async function notion(env: Env, path: string, init: RequestInit = {}): Promise<Json> {
+async function notion(env: Env, path: string, init: RequestInit = {}, retry = true): Promise<Json> {
   let res: Response;
   try {
     res = await fetch(`${API}${path}`, {
@@ -72,6 +72,12 @@ async function notion(env: Env, path: string, init: RequestInit = {}): Promise<J
     });
   } catch (e) {
     throw new NotionError(String(e).slice(0, 200));
+  }
+  // Rate limited (3 requests a second on average): wait as asked, at most 2 s, and try once more.
+  if (res.status === 429 && retry) {
+    const wait = Math.min(Number(res.headers.get("retry-after")) || 1, 2);
+    await new Promise((r) => setTimeout(r, wait * 1000));
+    return notion(env, path, init, false);
   }
   const body = (await res.json().catch(() => ({}))) as Json;
   if (!res.ok) throw new NotionError(`HTTP ${res.status} ${String(body.code ?? "")} ${String(body.message ?? "")}`.trim().slice(0, 300));
@@ -120,9 +126,18 @@ export async function getPage(env: Env, pageId: string): Promise<Json> {
   return notion(env, `/pages/${pageId}`);
 }
 
-export async function updatePage(env: Env, pageId: string, properties: Json): Promise<Json> {
-  return notion(env, `/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ properties }) });
+export async function updatePage(env: Env, pageId: string, properties: Json, extra: { in_trash?: boolean } = {}): Promise<Json> {
+  return notion(env, `/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ properties, ...extra }) });
 }
+
+export async function createPage(env: Env, properties: Json): Promise<Json> {
+  return notion(env, "/pages", {
+    method: "POST",
+    body: JSON.stringify({ parent: { type: "data_source_id", data_source_id: env.NOTION_TODO_SOURCE }, properties })
+  });
+}
+
+export const richText = (content: string) => [{ type: "text", text: { content } }];
 
 export const inSource = (env: Env, page: Json) => page.parent?.data_source_id === env.NOTION_TODO_SOURCE;
 

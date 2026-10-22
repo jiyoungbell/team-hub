@@ -7,20 +7,49 @@ import { toolHealth } from "./health";
 import { adminPage, homePage, loginPage, notFoundPage, settingsPage, todoPage, type Viewer } from "./pages";
 import { recheck } from "./recheck";
 import { currentSession, revokeSession, type Session } from "./session";
-import { changeStatus, lateCount, loadTodo, readMeta, STATUSES, teamsOf, type HubUser, type Person } from "./todo";
-import { renderTodo, TEAM_ORDER } from "./todo-view";
+import {
+  changeStatus,
+  createItem,
+  deleteItem,
+  editItem,
+  lateCount,
+  loadTodo,
+  orderTeams,
+  readMeta,
+  restoreItem,
+  STATUSES,
+  teamsOf,
+  type HubUser,
+  type Person,
+  type WriteResult
+} from "./todo";
+import { renderTodo, type TodoView } from "./todo-view";
 
 const PAGES = new Set(["/", "/todo", "/settings", "/admin"]);
 
 const statusesOf = (s: string[]) => (s.length ? s : STATUSES);
 
-async function todoStatus(env: Env, req: Request, session: Session, now: number, ctx?: ExecutionContext): Promise<Response> {
-  const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
+type TodoWrite = (env: Env, session: Session, input: unknown, now: number) => Promise<WriteResult>;
+const TODO_WRITES: Record<string, TodoWrite> = {
+  "/todo/status": changeStatus,
+  "/todo/items": createItem,
+  "/todo/edit": editItem,
+  "/todo/delete": deleteItem,
+  "/todo/restore": restoreItem
+};
+
+const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
+
+// The board is drawn here only, so every answer carries the new one.
+const boardJson = (v: TodoView) => ({ rail: v.rail, boards: v.boards, late: v.late, items: v.details, pick: v.pick });
+
+async function todoWrite(env: Env, req: Request, session: Session, now: number, write: TodoWrite, ctx?: ExecutionContext): Promise<Response> {
   if (req.headers.get("origin") !== env.HUB_ORIGIN) return json({ ok: false }, 403);
-  const result = await changeStatus(env, session, await req.json().catch(() => null), now);
-  if (!result.item) return json({ ok: false }, result.status);
+  const result = await write(env, session, await req.json().catch(() => null), now);
+  if (result.status !== 200 && result.status !== 409) return json({ ok: false }, result.status);
   const view = renderTodo(await loadTodo(env, session, now, ctx));
-  return json({ ok: result.status === 200, rail: view.rail, boards: view.boards, late: view.late, items: view.details }, result.status);
+  // 409: someone changed it in Notion first; the item now shows Notion's value.
+  return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), ...boardJson(view) }, result.status);
 }
 
 export default {
@@ -43,9 +72,11 @@ export default {
       return chatFrame(env, session.userId);
     }
 
-    if (path === "/todo/status" && req.method === "POST") {
-      if (!session) return Response.json({ ok: false }, { status: 401 });
-      return todoStatus(env, req, session, now, ctx);
+    const write = req.method === "POST" ? TODO_WRITES[path] : undefined;
+    if (write || (path === "/todo/board" && req.method === "GET")) {
+      if (!session) return json({ ok: false }, 401);
+      if (write) return todoWrite(env, req, session, now, write, ctx);
+      return json({ ok: true, ...boardJson(renderTodo(await loadTodo(env, session, now, ctx))) });
     }
 
     if (path === "/login") return session && url.searchParams.get("again") !== "1" ? redirect("/") : login(env, url);
@@ -110,8 +141,7 @@ export default {
     const [health, late, meta] = await Promise.all([toolHealth(env, tools, now, ctx), lateCount(env, now), readMeta(env)]);
     viewer.late = late;
     if (path === "/settings") {
-      const teams = [...TEAM_ORDER.filter((t) => meta.options.teams.includes(t)), ...meta.options.teams.filter((t) => !TEAM_ORDER.includes(t))];
-      return settingsPage(viewer, tools, health, teams);
+      return settingsPage(viewer, tools, health, orderTeams(meta.options.teams));
     }
     if (path === "/admin") {
       const error = ADMIN_ERRORS[url.searchParams.get("error") ?? ""] ?? null;

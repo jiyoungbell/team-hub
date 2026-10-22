@@ -1,9 +1,8 @@
 import type { TodoItem } from "./notion";
-import { DONE, HELD, kstStamp, type TodoData } from "./todo";
+import { DONE, HELD, kstStamp, monthDay, TEAM_ORDER, type Change, type TodoData } from "./todo";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-export const TEAM_ORDER = ["SNS", "총대", "디자인", "개발", "분석", "총무", "기타"];
 const NO_TEAM = "팀 없음";
 const NO_ONE = "담당자 없음";
 const RAIL_BACK = 6;
@@ -143,6 +142,20 @@ function rail(items: View[], today: string): string {
   return `<div class="rail-wrap"><div class="rail"><div class="past" style="width:${pos(t).toFixed(2)}%"></div><div class="rail-lanes" style="height:${h + 4}px">${mk}</div><div class="axis">${ticks}</div></div></div>`;
 }
 
+const CHANGE: Record<Change["field"], (c: Change) => string> = {
+  status: (c) => `${c.from_value ?? "없음"} → ${c.to_value}`,
+  create: () => "추가",
+  title: () => "제목 변경",
+  assignees: (c) => `담당자 → ${c.to_value || "없음"}`,
+  teams: (c) => `작업 팀 → ${c.to_value || "없음"}`,
+  due: (c) => `마감 → ${c.to_value ? monthDay(c.to_value) : "없음"}`,
+  delete: () => "삭제",
+  restore: () => "되돌림"
+};
+
+// "센마인 · 10/20 14:03 · 진행 중 → 완료"
+const changeLine = (c: Change) => `${c.user_name} · ${kstStamp(c.at)} · ${(CHANGE[c.field] ?? CHANGE.status)(c)}`;
+
 // What the small window shows, keyed by the page id without dashes (also the #link).
 function detail(x: View, d: TodoData) {
   return {
@@ -153,11 +166,12 @@ function detail(x: View, d: TodoData) {
     who: x.assignees,
     cat: x.category,
     due: x.n === null ? null : { tag: x.dueTag, cls: x.dueCls, date: x.dueDate },
+    ds: x.due_start, // as Notion has it, sent back with a due date change
     done: x.done_on ? md(x.done_on) : null,
     stage: x.stage,
     next: x.next_action,
     url: x.url,
-    log: (d.changes.get(x.page_id) ?? []).map((c) => `${c.user_name} · ${kstStamp(c.at)} · ${c.from_status ?? "없음"} → ${c.to_status}`)
+    log: (d.changes.get(x.page_id) ?? []).map(changeLine)
   };
 }
 
@@ -166,6 +180,8 @@ export interface TodoView {
   boards: string;
   late: number;
   details: Record<string, ReturnType<typeof detail>>;
+  // For adding and editing: assignees to pick (mine first), mine, team options, my teams.
+  pick: { names: string[]; mine: string; teams: string[]; myTeams: string[] };
 }
 
 export function renderTodo(d: TodoData, withBoards = true): TodoView {
@@ -177,7 +193,8 @@ export function renderTodo(d: TodoData, withBoards = true): TodoView {
     rail: rail(items, d.today),
     boards: withBoards ? board("team", teamGroups(items, d)) + board("person", personGroups(items, d)) : "",
     late: items.filter((x) => isOpen(x) && x.late).length,
-    details
+    details,
+    pick: { names: d.names, mine: d.mine, teams: d.teams.length ? d.teams : TEAM_ORDER, myTeams: d.myTeams }
   };
 }
 

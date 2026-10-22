@@ -110,7 +110,7 @@ ${main}
 
 const todoAssets = (t: TodoView, statuses: string[]) => ({
   head: `<link rel="stylesheet" href="/todo.css"><script src="/todo.js" defer></script>`,
-  tail: `<div id="todo-overlay"></div><script type="application/json" id="todo-data">${inlineJson({ items: t.details, statuses })}</script>`
+  tail: `<div id="todo-overlay"></div><div class="toast" id="todo-toast" role="status" hidden></div><script type="application/json" id="todo-data">${inlineJson({ items: t.details, statuses, pick: t.pick })}</script>`
 });
 
 export function homePage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, statuses: string[]) {
@@ -145,9 +145,8 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
     tools,
     health,
     "할 일",
-    `<div data-todo-rail>${todo.rail}</div><div data-todo-boards>${todo.boards || ""}</div>${
-      Object.keys(todo.details).length ? "" : `<p class="empty">할 일 없음</p>`
-    }`,
+    `<form class="qa" data-qa autocomplete="off"><div class="qa-line">${ICON.plus}<input class="qa-in" name="title" placeholder="할 일 추가" maxlength="200" enterkeyhint="done" aria-label="할 일 추가"><button type="submit" class="qa-go">추가</button></div><div class="qa-more" hidden></div></form>
+<div data-todo-rail>${todo.rail}</div><div data-todo-boards>${todo.boards || ""}</div><p class="empty" data-todo-empty${Object.keys(todo.details).length ? " hidden" : ""}>할 일 없음</p>`,
     {
       ...assets,
       head: BY_SCRIPT + assets.head,
