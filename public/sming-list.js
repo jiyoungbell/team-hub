@@ -38,6 +38,7 @@
   function render() {
     let cum = 0;
     const tally = new Map();
+    const shown = new Set(); // 연결 only on a typed-in song's first row: it links every row of it
     rowsEl.innerHTML = st.items
       .map((key, i) => {
         const s = st.songs[key];
@@ -46,11 +47,13 @@
         const cover = s.melon
           ? s.cover ? `<img class="sl-cover" src="${esc(s.cover)}" alt="" loading="lazy">` : `<span class="sl-cover"></span>`
           : `<img class="sl-cover" src="/pulse-cover.jpg" alt="">`;
-        const link = s.melon ? "" : `<button type="button" class="sl-link" data-link="${esc(key)}" aria-pressed="${linking === key}">연결</button>`;
+        const first = !shown.has(key);
+        shown.add(key);
+        const link = s.melon || !first ? "" : `<button type="button" class="sl-link" data-link="${esc(key)}" aria-pressed="${linking === key}">연결</button>`;
         return `<div class="sl-row" role="row" data-i="${i}">
 <span class="sl-no" role="cell">${two(i + 1)}</span>
 <span class="sl-cv" role="cell">${cover}</span>
-<span class="sl-title" role="cell"><b title="${esc(s.artist ? `${s.title} · ${s.artist}` : s.title)}">${esc(s.title)}</b>${link}</span>
+<span class="sl-title" role="cell"><b title="${esc(s.artist ? `${s.title} · ${s.artist}` : s.title)}">${esc(s.title)}</b><span class="sl-sub"><span class="sl-subdur">${clock(s.sec)}</span>${link}</span></span>
 <span class="sl-num sl-dur-c" role="cell">${clock(s.sec)}</span>
 <span class="sl-num sl-strong" role="cell">${clock(cum)}</span>
 <span class="sl-act" role="cell"><button type="button" class="sl-dup" data-dup aria-label="복제">${ICON.dup}</button><button type="button" data-del aria-label="삭제">${ICON.del}</button><button type="button" class="sl-grip" data-grip aria-label="순서 바꾸기 (위아래 화살표)">${ICON.grip}</button></span>
