@@ -1,12 +1,14 @@
 import { chatFrame, chatReply } from "./chat";
 import { ADMIN_ERRORS, adminPost, listUsers } from "./admin";
 import { callback, clearSession, login, redirect } from "./auth";
-import { isAdmin, type Env } from "./env";
+import { isAdmin, log, type Env } from "./env";
 import { gateApi, go, listTools } from "./gate";
 import { toolHealth } from "./health";
-import { adminPage, homePage, loginPage, notFoundPage, settingsPage, todoPage, type Viewer } from "./pages";
+import { MelonError, search } from "./melon";
+import { adminPage, homePage, loginPage, notFoundPage, settingsPage, smingIndexPage, smingPage, todoPage, type Viewer } from "./pages";
 import { recheck } from "./recheck";
 import { currentSession, revokeSession, type Session } from "./session";
+import { canDelete, createList, deleteList, LIST_ID, listLists, loadList, saveList } from "./sming-list";
 import {
   changeStatus,
   createItem,
@@ -26,6 +28,12 @@ import {
 import { clientData, renderTodo } from "./todo-view";
 
 const PAGES = new Set(["/", "/todo", "/settings", "/admin"]);
+
+// /sming-list/<id> as a page; other /sming-list/... paths are its search, save and delete.
+const smingPageId = (path: string) => {
+  const id = path.slice("/sming-list/".length);
+  return path.startsWith("/sming-list/") && LIST_ID.test(id) ? id : null;
+};
 
 const statusesOf = (s: string[]) => (s.length ? s : STATUSES);
 
@@ -54,6 +62,44 @@ async function todoWrite(env: Env, req: Request, session: Session, now: number, 
   return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), data: await todoJson(env, session, now, ctx) }, result.status);
 }
 
+async function smingApi(env: Env, req: Request, url: URL, session: Session, now: number): Promise<Response> {
+  const path = url.pathname;
+  if (path === "/sming-list/search" && req.method === "GET") {
+    const q = (url.searchParams.get("q") ?? "").trim().slice(0, 60);
+    if (!q) return json({ ok: true, songs: [] });
+    try {
+      return json({ ok: true, songs: await search(q) });
+    } catch (e) {
+      if (!(e instanceof MelonError) && !(e instanceof Error && e.name === "TimeoutError")) throw e;
+      log("melon_failed", { error: String(e) });
+      return json({ ok: false }, 502);
+    }
+  }
+  if (req.method !== "POST") return notFoundPage();
+  if (req.headers.get("origin") !== env.HUB_ORIGIN) return json({ ok: false }, 403);
+
+  if (path === "/sming-list") {
+    const copy = (await req.formData().catch(() => null))?.get("copy") ?? null;
+    const from = typeof copy === "string" ? await loadList(env, copy) : null;
+    if (copy !== null && !from) return notFoundPage();
+    return redirect(`/sming-list/${await createList(env, session, now, from)}`);
+  }
+  const m = /^\/sming-list\/([\w-]{8})(\/delete)?$/.exec(path);
+  if (!m) return notFoundPage();
+  const id = m[1]!;
+  if (m[2]) {
+    const list = await loadList(env, id);
+    if (!list) return redirect("/sming-list");
+    if (!canDelete(list, session, isAdmin(env, session.userId))) return new Response("Forbidden", { status: 403 });
+    await deleteList(env, id);
+    return redirect("/sming-list");
+  }
+  const result = await saveList(env, session, id, await req.json().catch(() => null), now);
+  if (result.status !== 200 && result.status !== 409) return json({ ok: false }, result.status);
+  const { list } = result;
+  return json({ ok: result.status === 200, list: { id: list.id, name: list.name, songs: list.songs, items: list.items, version: list.version } }, result.status);
+}
+
 export default {
   async fetch(req, env, ctx?): Promise<Response> {
     const url = new URL(req.url);
@@ -64,7 +110,9 @@ export default {
     if (path === "/auth/callback") return callback(env, req, url, now);
 
     // Pages need the tool list too; fetch it alongside the session instead of after it.
-    const pageTools = req.method === "GET" && (PAGES.has(path) || path.startsWith("/admin/")) ? listTools(env) : null;
+    const smingId = smingPageId(path);
+    const sming = path === "/sming-list" || smingId !== null;
+    const pageTools = req.method === "GET" && (PAGES.has(path) || path.startsWith("/admin/") || sming) ? listTools(env) : null;
     pageTools?.catch(() => {});
     const session = await currentSession(env, req, now);
 
@@ -79,6 +127,12 @@ export default {
       if (!session) return json({ ok: false }, 401);
       if (write) return todoWrite(env, req, session, now, write, ctx);
       return json({ ok: true, data: await todoJson(env, session, now, ctx) });
+    }
+
+    if (path.startsWith("/sming-list") && !(req.method === "GET" && sming)) {
+      if (path !== "/sming-list" && !path.startsWith("/sming-list/")) return notFoundPage();
+      if (!session) return req.method === "GET" ? json({ ok: false }, 401) : loginPage("/sming-list");
+      return smingApi(env, req, url, session, now);
     }
 
     if (path === "/login") return session && url.searchParams.get("again") !== "1" ? redirect("/") : login(env, url);
@@ -101,7 +155,7 @@ export default {
     }
 
     const admin = path === "/admin" || path.startsWith("/admin/");
-    if (!PAGES.has(path) && !admin) return notFoundPage();
+    if (!PAGES.has(path) && !admin && !sming) return notFoundPage();
     if (!session) return loginPage(path === "/" ? undefined : path);
     const viewer: Viewer = {
       name: session.name,
@@ -138,6 +192,13 @@ export default {
       const todo = renderTodo(data, path === "/todo");
       viewer.late = todo.late;
       return (path === "/" ? homePage : todoPage)(viewer, tools, health, todo, clientData(data, statusesOf(data.options.statuses), session.name));
+    }
+    if (sming) {
+      const [health, late, list] = await Promise.all([toolHealth(env, tools, now, ctx), lateCount(env, now), smingId ? loadList(env, smingId) : null]);
+      viewer.late = late;
+      if (!smingId) return smingIndexPage(viewer, tools, health, await listLists(env));
+      if (!list) return notFoundPage();
+      return smingPage(viewer, tools, health, list, canDelete(list, session, viewer.admin));
     }
     const [health, late, meta] = await Promise.all([toolHealth(env, tools, now, ctx), lateCount(env, now), readMeta(env)]);
     viewer.late = late;

@@ -1,5 +1,6 @@
 import type { Tool } from "./gate";
 import { ICON, TOOL_ICONS, toolIcon } from "./icons";
+import { clock, type SmingList, type SmingRow } from "./sming-list";
 import type { HubUser, Meta, Person } from "./todo";
 import { inlineJson, type ClientData, type TodoView } from "./todo-view";
 
@@ -27,7 +28,7 @@ export interface AdminUser {
   sessions: number;
 }
 
-type Section = "home" | "todo" | "settings" | "admin";
+type Section = "home" | "todo" | "sming" | "settings" | "admin";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const theme = (t: string | null) => (t === "light" ? "light" : "dark");
@@ -93,6 +94,7 @@ function shell(v: Viewer, at: Section, tools: Tool[], health: Map<string, boolea
 <nav class="nav">
 ${item("/", ICON.home, "홈", at === "home")}
 ${item("/todo", ICON.todo, "할 일", at === "todo", v.late ? `<b class="n" data-late>${v.late}</b>` : `<b class="n" data-late hidden></b>`)}
+${item("/sming-list", ICON.sming, "슴리 계산기", at === "sming")}
 ${tools.length ? `<p class="label">도구</p>${toolItems}` : ""}
 </nav>
 <div class="me">
@@ -157,6 +159,73 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
       head: BY_SCRIPT + assets.head,
       mainClass: "todo",
       heading: `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="보기 방식"><button type="button" data-by="team" aria-pressed="true">팀별</button><button type="button" data-by="person" aria-pressed="false">사람별</button></div></div>`
+    }
+  );
+}
+
+const smingAssets = `<link rel="stylesheet" href="/sming-list.css?v=${assetV}"><script src="/sming-list.js?v=${assetV}" defer></script>`;
+
+export function smingIndexPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, lists: SmingRow[]) {
+  const rows = lists
+    .map(
+      (l) => `<a class="sl-li" href="/sming-list/${l.id}">
+<span class="sl-li-name">${esc(l.name)}</span>
+<span class="sl-num sl-hide-s">${l.count}</span>
+<span class="sl-num sl-strong">${clock(l.sec)}</span>
+<span class="sl-li-who sl-hide-s">${esc(l.updated_name)} · ${when(l.updated_at)}</span>
+</a>`
+    )
+    .join("");
+  return shell(
+    v,
+    "sming",
+    tools,
+    health,
+    "슴리",
+    lists.length
+      ? `<div class="sl-list"><div class="sl-li sl-li-head" aria-hidden="true"><span>이름</span><span class="sl-num sl-hide-s">곡</span><span class="sl-num">합계</span><span class="sl-num sl-hide-s">고친 사람</span></div>${rows}</div>`
+      : `<p class="empty">슴리 없음</p>`,
+    {
+      head: smingAssets,
+      mainClass: "sming",
+      heading: `<div class="sl-top"><h1>슴리</h1><form method="post" action="/sming-list"><button class="btn sl-new">새 슴리</button></form></div>`
+    }
+  );
+}
+
+export function smingPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, list: SmingList, deletable: boolean) {
+  const data = { id: list.id, name: list.name, songs: list.songs, items: list.items, version: list.version };
+  return shell(
+    v,
+    "sming",
+    tools,
+    health,
+    list.name,
+    `<div class="sl-search">
+<div class="sl-q">${ICON.search}<input id="sl-q" placeholder="멜론에서 곡 검색" autocomplete="off" maxlength="60" aria-label="곡 검색" aria-controls="sl-res" aria-expanded="false" role="combobox">
+<div class="sl-res" id="sl-res" role="listbox" aria-label="검색 결과" hidden></div></div>
+<button type="button" class="btn" data-manual aria-expanded="false">직접 넣기</button>
+</div>
+<form class="sl-manual" data-manual-form hidden autocomplete="off">
+<input name="song" placeholder="제목" maxlength="100" required aria-label="제목">
+<input name="dur" placeholder="3:05" inputmode="numeric" required aria-label="재생시간" class="sl-dur">
+<button class="btn sl-primary">넣기</button>
+</form>
+<div class="sl-table" role="table" aria-label="${esc(list.name)}"><div data-rows role="rowgroup"></div>
+<div class="sl-total" role="row"><span role="cell">합계 <span class="muted" data-count></span></span><span role="cell" class="sl-num" data-total></span></div></div>
+<p class="sl-counts" data-counts></p>`,
+    {
+      head: smingAssets,
+      mainClass: "sming",
+      heading: `<div class="sl-top">
+<a class="sl-icon" href="/sming-list" aria-label="슴리 목록">${ICON.back}</a>
+<input class="sl-name" data-name value="${esc(list.name)}" maxlength="60" aria-label="이름">
+<div class="sl-btns"><button type="button" class="btn" data-copy>텍스트 복사</button>
+<form method="post" action="/sming-list"><input type="hidden" name="copy" value="${list.id}"><button class="btn">복사해서 새로</button></form>${
+        deletable ? `<form method="post" action="/sming-list/${list.id}/delete" data-delete><button class="btn quiet">삭제</button></form>` : ""
+      }</div>
+</div>`,
+      tail: `<div class="toast" id="sl-toast" role="status" hidden></div><script type="application/json" id="sl-data">${inlineJson(data)}</script>`
     }
   );
 }

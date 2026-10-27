@@ -6,7 +6,7 @@
   "scripts": {
     "build": "esbuild src/todo-view.ts --bundle --minify --format=iife --global-name=TodoView --target=es2020 --outfile=public/todo-view.js",
     "dev": "npm run build && wrangler dev --test-scheduled",
-    "deploy": "npm run build && wrangler d1 migrations apply team-hub --remote && wrangler deploy --define ASSET_V:\\\"$(cat public/todo.js public/todo-view.js public/todo.css | sha1sum | cut -c1-10)\\\"",
+    "deploy": "npm run build && wrangler d1 migrations apply team-hub --remote && wrangler deploy --define ASSET_V:\\\"$(cat public/todo.js public/todo-view.js public/todo.css public/sming-list.js public/sming-list.css | sha1sum | cut -c1-10)\\\"",
     "check": "tsc --noEmit && tsc --noEmit -p test",
     "test": "vitest run",
     "keygen": "node scripts/keygen.mjs"
