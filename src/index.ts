@@ -1,4 +1,3 @@
-import { chatFrame, chatReply } from "./chat";
 import { ADMIN_ERRORS, adminPost, listUsers } from "./admin";
 import { callback, clearSession, login, redirect } from "./auth";
 import { isAdmin, log, type Env } from "./env";
@@ -117,12 +116,6 @@ export default {
     const pageTools = req.method === "GET" && (PAGES.has(path) || path.startsWith("/admin/") || sming) ? listTools(env) : null;
     pageTools?.catch(() => {});
     const session = await currentSession(env, req, now);
-
-    if (path === "/chat/embed" || path === "/api/chat") {
-      if (!session) return new Response("로그인이 만료되었습니다. 허브에서 로그인한 뒤 다시 열어주세요.", { status: 401, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
-      if (path === "/api/chat") return chatReply(req, env, session.userId);
-      return chatFrame(env, session.userId);
-    }
 
     const write = req.method === "POST" ? TODO_WRITES[path] : undefined;
     if (write || (path === "/todo/board" && req.method === "GET")) {

@@ -73,7 +73,7 @@ interface ShellExtra {
   head?: string; // extra <head> markup
   heading?: string; // replaces the plain <h1>
   mainClass?: string;
-  tail?: string; // after the layout, before the chat widget
+  tail?: string; // after the layout
 }
 
 function shell(v: Viewer, at: Section, tools: Tool[], health: Map<string, boolean>, title: string, main: string, x: ShellExtra = {}) {
@@ -108,7 +108,7 @@ ${v.admin ? item("/admin", ICON.admin, "관리자", at === "admin") : ""}
 ${x.heading ?? `<h1>${esc(title)}</h1>`}
 ${main}
 </main>
-</div>${x.tail ?? ""}<script src="/chat-widget.js" defer></script>`,
+</div>${x.tail ?? ""}`,
     200,
     {},
     x.head
@@ -163,7 +163,7 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
   );
 }
 
-// Open without signing in: no side menu, tools or chat, and the theme this browser last had on the hub.
+// Open without signing in: no side menu or tools, and the theme this browser last had on the hub.
 const THEME_SCRIPT = `<script>try { document.documentElement.dataset.theme = localStorage.getItem("team-theme") === "light" ? "light" : "dark"; } catch (e) {}</script>`;
 
 function smingShell(v: Viewer | null, tools: Tool[], health: Map<string, boolean>, title: string, main: string, x: ShellExtra) {

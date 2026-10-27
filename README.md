@@ -23,12 +23,11 @@
 | `/logout` | Revokes the hub session (GET or POST) |
 | `/go?to=<host>&next=<path>&state=<state>` | Sends a signed ticket to `https://<host>/_auth/callback`. Only hosts in the `tools` table |
 | `/api/me` | The signed-in user |
-| `/chat/embed`, `/api/chat` | 별이 chat: the frame the widget opens, and its API (relayed to the home server's `team-chat` bridge). Signed-in only |
 | `/api/gate/public-key` | Ed25519 public key (JWK) for verifying tickets and tool tokens |
 | `/api/gate/sync?since=<cursor>` | For team-gate, `Authorization: Bearer <GATE_TOKEN>`. Revoked sids, changed profiles, tools |
 | `/api/gate/logout` | For team-gate. `POST {"sid": "..."}` |
 
-Static files in `public/` (styles, logos, `header.js`, `chat-widget.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day. The to-do page loads its files with `?v=<hash>` (`ASSET_V`, set by `npm run deploy`), so a page never runs an older cached script than its data.
+Static files in `public/` (styles, logos, `header.js`) are served before the Worker runs. `public/_headers` lets browsers keep scripts and styles for 5 minutes and images for a day. The to-do page loads its files with `?v=<hash>` (`ASSET_V`, set by `npm run deploy`), so a page never runs an older cached script than its data.
 
 The to-do board reads a copy of the Notion data source (`NOTION_TODO_SOURCE`) kept in D1. A page view older than a minute refreshes it after the response; the first one waits for it. A failed refresh keeps the last copy and shows the reason on the admin page. A status change first reads the page from Notion and only writes if the status is still the one the person saw. It sets `상태`, fills `완료일` with today (KST) when moving to 완료 with no date, and writes `허브 변경` (`<nickname> 10/20 14:03 진행 중→완료`). Every change is also kept in `todo_changes`.
 
@@ -55,8 +54,6 @@ Theme: the header sets `<html data-theme="dark|light">` from the user's hub sett
 ```html
 <script>try { document.documentElement.dataset.theme = localStorage.getItem("team-theme") === "light" ? "light" : "dark"; } catch (e) {}</script>
 ```
-
-Once signed in, the header also loads the 별이 chat widget (`chat-widget.js`), which opens `/chat/embed` in a frame.
 
 A tool with a CSP needs `team.rescene-remine.com` in `script-src`, `style-src`, `img-src` and `frame-src`, `cdn.discordapp.com` in `img-src`, and `cdn.jsdelivr.net` in `style-src` for the font.
 

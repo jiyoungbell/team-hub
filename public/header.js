@@ -25,13 +25,6 @@
         if (res.ok) me = await res.json();
       } catch {}
 
-      if (me && !document.querySelector('script[data-team-chat]')) {
-        const chat = document.createElement('script');
-        chat.src = `${HUB}/chat-widget.js`;
-        chat.dataset.teamChat = '1';
-        document.head.append(chat);
-      }
-
       // The tool page follows the hub theme: <html data-theme>, kept under "team-theme" so the tool can set it before first paint.
       if (me) {
         const theme = me.theme === "light" ? "light" : "dark";

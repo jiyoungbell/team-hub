@@ -80,7 +80,6 @@ h3 { margin: 0; }
   padding: 12px max(24px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
 }
 .win.sheet .sheet-in { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
-:root[data-todo-sheet] #team-chat-widget { display: none; }
 .grab { width: 44px; height: 5px; border-radius: 3px; background: var(--card-line); margin: 0 auto 4px; flex-shrink: 0; }
 .win.pop {
   position: fixed; z-index: 21; width: min(380px, calc(100vw - 32px)); max-height: min(72vh, 640px); border-radius: 14px; border: 1px solid var(--card-line);
