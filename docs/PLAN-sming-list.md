@@ -25,7 +25,7 @@
                 └── 곡 검색 ─▶ melon.com, m2.melon.com
 ```
 
-- 허브 Worker 안의 페이지. 로그인한 팀원만. 홈서버·team-gate 는 손대지 않는다.
+- 허브 Worker 안의 페이지. **로그인 없이** 링크로 열고 고친다(2026-10-27 사용자 결정, 링크는 밖에 뿌리지 않음). 로그인 상태면 허브 옆 메뉴와 함께, 아니면 로고만. 홈서버·team-gate 는 손대지 않는다.
 - 화면은 서버에서 HTML 을 만들고, 목록 편집·계산은 `public/sming-list.js`.
 - 곡 표는 따로 두지 않는다. 곡 정보는 슴리 안에 함께 저장한다(6절).
 
@@ -51,7 +51,8 @@
 ## 6. 저장
 
 - 팀원 누구나 열고 고친다. 고치면 바로 저장. 받은 버전과 서버 버전이 다르면 덮어쓰지 않고 최신을 다시 보여 준다.
-- 삭제는 만든 사람과 관리자만.
+- 고친 사람은 로그인한 경우만 남는다(아니면 시각만).
+- 삭제는 로그인한 만든 사람과 관리자만. 로그인 없이 만든 슴리는 관리자만.
 
 ```sql
 CREATE TABLE slists (
@@ -60,8 +61,8 @@ CREATE TABLE slists (
   songs TEXT NOT NULL,            -- JSON {key: {melon_id?, title, artist?, cover?, sec}}. key 는 멜론 곡 번호, 직접 넣은 곡은 임의 번호
   items TEXT NOT NULL,            -- JSON 배열: songs 의 key 순서대로
   version INTEGER NOT NULL,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  updated_by TEXT NOT NULL REFERENCES users(id),
+  created_by TEXT REFERENCES users(id),     -- 로그인 안 했으면 NULL
+  updated_by TEXT REFERENCES users(id),
   updated_at INTEGER NOT NULL
 );
 ```

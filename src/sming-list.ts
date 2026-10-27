@@ -1,6 +1,5 @@
 import { randomId } from "./crypto";
 import type { Env } from "./env";
-import type { Session } from "./session";
 
 export interface Song {
   title: string;
@@ -16,7 +15,7 @@ export interface SmingList {
   songs: Record<string, Song>;
   items: string[];
   version: number;
-  created_by: string;
+  created_by: string | null;
   updated_name: string;
   updated_at: number;
 }
@@ -43,7 +42,7 @@ interface Row {
   songs: string;
   items: string;
   version: number;
-  created_by: string;
+  created_by: string | null;
   updated_name: string | null;
   updated_at: number;
 }
@@ -76,11 +75,11 @@ export async function loadList(env: Env, id: string): Promise<SmingList | null> 
   return r ? toList(r) : null;
 }
 
-// A new empty list, or a copy of `from` under "<name> 사본".
-export async function createList(env: Env, session: Session, now: number, from: SmingList | null): Promise<string> {
+// A new empty list, or a copy of `from` under "<name> 사본". `userId` is null for someone not signed in.
+export async function createList(env: Env, userId: string | null, now: number, from: SmingList | null): Promise<string> {
   const id = randomId(6);
   await env.DB.prepare("INSERT INTO slists (id, name, songs, items, version, created_by, updated_by, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)")
-    .bind(id, from ? `${from.name} 사본`.slice(0, 60) : NEW_NAME, JSON.stringify(from?.songs ?? {}), JSON.stringify(from?.items ?? []), session.userId, session.userId, now)
+    .bind(id, from ? `${from.name} 사본`.slice(0, 60) : NEW_NAME, JSON.stringify(from?.songs ?? {}), JSON.stringify(from?.items ?? []), userId, userId, now)
     .run();
   return id;
 }
@@ -125,20 +124,21 @@ export function cleanInput(input: unknown): { version: number; name: string; son
 export type SaveResult = { status: 200 | 409; list: SmingList } | { status: 400 | 404 };
 
 // Saves only over the version the person saw; otherwise they get the newer list back.
-export async function saveList(env: Env, session: Session, id: string, input: unknown, now: number): Promise<SaveResult> {
+export async function saveList(env: Env, userId: string | null, id: string, input: unknown, now: number): Promise<SaveResult> {
   const v = cleanInput(input);
   if (!v) return { status: 400 };
   const r = await env.DB.prepare(
     "UPDATE slists SET name = ?, songs = ?, items = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE id = ? AND version = ?"
   )
-    .bind(v.name, JSON.stringify(v.songs), JSON.stringify(v.items), session.userId, now, id, v.version)
+    .bind(v.name, JSON.stringify(v.songs), JSON.stringify(v.items), userId, now, id, v.version)
     .run();
   const list = await loadList(env, id);
   if (!list) return { status: 404 };
   return { status: r.meta.changes ? 200 : 409, list };
 }
 
-export const canDelete = (list: SmingList, session: Session, admin: boolean) => admin || list.created_by === session.userId;
+// Signed in only: the maker, or the admin. A list made without signing in is the admin's to delete.
+export const canDelete = (list: SmingList, userId: string | null, admin: boolean) => admin || (!!userId && list.created_by === userId);
 
 export async function deleteList(env: Env, id: string): Promise<void> {
   await env.DB.prepare("DELETE FROM slists WHERE id = ?").bind(id).run();

@@ -163,27 +163,41 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
   );
 }
 
+// Open without signing in: no side menu, tools or chat, and the theme this browser last had on the hub.
+const THEME_SCRIPT = `<script>try { document.documentElement.dataset.theme = localStorage.getItem("team-theme") === "light" ? "light" : "dark"; } catch (e) {}</script>`;
+
+function smingShell(v: Viewer | null, tools: Tool[], health: Map<string, boolean>, title: string, main: string, x: ShellExtra) {
+  if (v) return shell(v, "sming", tools, health, title, main, x);
+  return page(
+    `${title} · 리센느 음원총공팀`,
+    null,
+    `<div class="sl-open"><a class="logo sl-logo" href="/sming-list">${logo}</a><main class="main ${x.mainClass ?? ""}">${x.heading ?? ""}${main}</main></div>${x.tail ?? ""}`,
+    200,
+    {},
+    THEME_SCRIPT + (x.head ?? "")
+  );
+}
+
 const smingAssets = `<link rel="stylesheet" href="/sming-list.css?v=${assetV}"><script src="/sming-list.js?v=${assetV}" defer></script>`;
 
-export function smingIndexPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, lists: SmingRow[]) {
+export function smingIndexPage(v: Viewer | null, tools: Tool[], health: Map<string, boolean>, lists: SmingRow[]) {
   const rows = lists
     .map(
       (l) => `<a class="sl-li" href="/sming-list/${l.id}">
 <span class="sl-li-name">${esc(l.name)}</span>
 <span class="sl-num sl-hide-s">${l.count}</span>
 <span class="sl-num sl-strong">${clock(l.sec)}</span>
-<span class="sl-li-who sl-hide-s">${esc(l.updated_name)} · ${when(l.updated_at)}</span>
+<span class="sl-li-who sl-hide-s">${l.updated_name ? `${esc(l.updated_name)} · ` : ""}${when(l.updated_at)}</span>
 </a>`
     )
     .join("");
-  return shell(
+  return smingShell(
     v,
-    "sming",
     tools,
     health,
     "슴리",
     lists.length
-      ? `<div class="sl-list"><div class="sl-li sl-li-head" aria-hidden="true"><span>이름</span><span class="sl-num sl-hide-s">곡</span><span class="sl-num">합계</span><span class="sl-num sl-hide-s">고친 사람</span></div>${rows}</div>`
+      ? `<div class="sl-list"><div class="sl-li sl-li-head" aria-hidden="true"><span>이름</span><span class="sl-num sl-hide-s">곡</span><span class="sl-num">합계</span><span class="sl-num sl-hide-s">마지막 수정</span></div>${rows}</div>`
       : `<p class="empty">슴리 없음</p>`,
     {
       head: smingAssets,
@@ -193,11 +207,10 @@ export function smingIndexPage(v: Viewer, tools: Tool[], health: Map<string, boo
   );
 }
 
-export function smingPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, list: SmingList, deletable: boolean) {
+export function smingPage(v: Viewer | null, tools: Tool[], health: Map<string, boolean>, list: SmingList, deletable: boolean) {
   const data = { id: list.id, name: list.name, songs: list.songs, items: list.items, version: list.version };
-  return shell(
+  return smingShell(
     v,
-    "sming",
     tools,
     health,
     list.name,

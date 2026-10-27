@@ -62,7 +62,9 @@ async function todoWrite(env: Env, req: Request, session: Session, now: number, 
   return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), data: await todoJson(env, session, now, ctx) }, result.status);
 }
 
-async function smingApi(env: Env, req: Request, url: URL, session: Session, now: number): Promise<Response> {
+// Open without signing in; a signed-in person's edits carry their name.
+async function smingApi(env: Env, req: Request, url: URL, session: Session | null, now: number): Promise<Response> {
+  const userId = session?.userId ?? null;
   const path = url.pathname;
   if (path === "/sming-list/search" && req.method === "GET") {
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 60);
@@ -82,7 +84,7 @@ async function smingApi(env: Env, req: Request, url: URL, session: Session, now:
     const copy = (await req.formData().catch(() => null))?.get("copy") ?? null;
     const from = typeof copy === "string" ? await loadList(env, copy) : null;
     if (copy !== null && !from) return notFoundPage();
-    return redirect(`/sming-list/${await createList(env, session, now, from)}`);
+    return redirect(`/sming-list/${await createList(env, userId, now, from)}`);
   }
   const m = /^\/sming-list\/([\w-]{8})(\/delete)?$/.exec(path);
   if (!m) return notFoundPage();
@@ -90,11 +92,11 @@ async function smingApi(env: Env, req: Request, url: URL, session: Session, now:
   if (m[2]) {
     const list = await loadList(env, id);
     if (!list) return redirect("/sming-list");
-    if (!canDelete(list, session, isAdmin(env, session.userId))) return new Response("Forbidden", { status: 403 });
+    if (!canDelete(list, userId, !!userId && isAdmin(env, userId))) return new Response("Forbidden", { status: 403 });
     await deleteList(env, id);
     return redirect("/sming-list");
   }
-  const result = await saveList(env, session, id, await req.json().catch(() => null), now);
+  const result = await saveList(env, userId, id, await req.json().catch(() => null), now);
   if (result.status !== 200 && result.status !== 409) return json({ ok: false }, result.status);
   const { list } = result;
   return json({ ok: result.status === 200, list: { id: list.id, name: list.name, songs: list.songs, items: list.items, version: list.version } }, result.status);
@@ -131,7 +133,6 @@ export default {
 
     if (path.startsWith("/sming-list") && !(req.method === "GET" && sming)) {
       if (path !== "/sming-list" && !path.startsWith("/sming-list/")) return notFoundPage();
-      if (!session) return req.method === "GET" ? json({ ok: false }, 401) : loginPage("/sming-list");
       return smingApi(env, req, url, session, now);
     }
 
@@ -156,7 +157,12 @@ export default {
 
     const admin = path === "/admin" || path.startsWith("/admin/");
     if (!PAGES.has(path) && !admin && !sming) return notFoundPage();
-    if (!session) return loginPage(path === "/" ? undefined : path);
+    if (!session) {
+      if (!sming) return loginPage(path === "/" ? undefined : path);
+      const list = smingId ? await loadList(env, smingId) : null;
+      if (!smingId) return smingIndexPage(null, [], new Map(), await listLists(env));
+      return list ? smingPage(null, [], new Map(), list, false) : notFoundPage();
+    }
     const viewer: Viewer = {
       name: session.name,
       avatar: session.avatar,
@@ -198,7 +204,7 @@ export default {
       viewer.late = late;
       if (!smingId) return smingIndexPage(viewer, tools, health, await listLists(env));
       if (!list) return notFoundPage();
-      return smingPage(viewer, tools, health, list, canDelete(list, session, viewer.admin));
+      return smingPage(viewer, tools, health, list, canDelete(list, session.userId, viewer.admin));
     }
     const [health, late, meta] = await Promise.all([toolHealth(env, tools, now, ctx), lateCount(env, now), readMeta(env)]);
     viewer.late = late;

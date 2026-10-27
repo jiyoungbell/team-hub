@@ -157,3 +157,12 @@ a.sl-li:hover { background: var(--hover); }
   .sl-li { grid-template-columns: minmax(0, 1fr) 76px; }
   .sl-hide-s { display: none; }
 }
+
+/* Opened without signing in: logo above, no side menu. */
+.sl-open { min-height: 100vh; display: flex; flex-direction: column; }
+.sl-logo { padding: 28px 48px 0; }
+.sl-logo img { width: 140px; }
+@media (max-width: 760px) {
+  .sl-logo { padding: 20px 16px 0; }
+  .sl-logo img { width: 110px; }
+}

@@ -13,9 +13,9 @@
 | `/todo/edit` | `POST {"page", "field", "from", "to"}`, field `title`, `assignees`, `teams` or `due` |
 | `/todo/delete`, `/todo/restore` | `POST {"page"}`. Into Notion's trash and back (restore only for pages deleted from the hub) |
 | `/todo/board` | The board as JSON, for a tab coming back after a minute |
-| `/sming-list` | 슴리 계산기: saved streaming lists (name, songs, total, last edit). `POST` (form, optional `copy=<id>`) makes a new one |
+| `/sming-list` | 슴리 계산기, open without signing in (no side menu then): saved streaming lists (name, songs, total, last edit). `POST` (form, optional `copy=<id>`) makes a new one |
 | `/sming-list/<id>` | One list: Melon search, typed-in songs (before release) and linking them later, reorder, total and running time, text copy. `POST {"version", "name", "songs", "items"}` saves it; 409 with the newer list if someone saved first |
-| `/sming-list/<id>/delete` | `POST`. The maker or the admin |
+| `/sming-list/<id>/delete` | `POST`. Signed in as the maker, or the admin (a list made signed out: the admin only) |
 | `/sming-list/search?q=` | Melon search with play times, as JSON |
 | `/settings` | Dark or light theme, my teams |
 | `/admin` | Tools (name, host, order, icon), users (last seen, role check, force logout), Notion sync status and assignee name matching. Only `ADMIN_DISCORD_ID` |
@@ -34,7 +34,7 @@ The to-do board reads a copy of the Notion data source (`NOTION_TODO_SOURCE`) ke
 
 Adds, edits and deletes write `허브 변경` the same way (`추가`, `제목 변경`, `담당자→까엉, 리부`, `마감일→10/25`, `삭제`, `되돌림`). A title or due date is only written if Notion still has what the person saw; assignees and teams apply just what was added and removed to Notion's current list. Assignees to pick are Notion's options plus every hub user (by their matched Notion name, else nickname). A sync leaves alone pages the hub changed after the sync started, and rewrites only rows that differ. Every write answers with the whole copy (`clientData`). The page draws the board itself with the same `renderTodo` the Worker uses (bundled into `public/todo-view.js` by `npm run build`), so a change shows the moment it's made and Notion's answer catches up behind it; cards slide to their new places. The add row also takes `@이름` and `#팀` while typing.
 
-A 슴리 keeps its songs inside the list (`slists.songs`, keyed `m<Melon id>` or `u…` for a typed-in song), so linking a typed-in song to its Melon release changes every row of it. Search uses Melon's keyword JSON (first 20 characters, double-encoded, as in bill-ji-maker), and play times come from `m2.melon.com/m6/v2/song/info.json` (`PLAYTIME`, seconds). The page saves half a second after each change, only over the version it last saw.
+A 슴리 keeps its songs inside the list (`slists.songs`, keyed `m<Melon id>` or `u…` for a typed-in song), so linking a typed-in song to its Melon release changes every row of it. Search uses Melon's keyword JSON (first 20 characters, double-encoded, as in bill-ji-maker), and play times come from `m2.melon.com/m6/v2/song/info.json` (`PLAYTIME`, seconds). The page saves half a second after each change, only over the version it last saw. An edit by someone signed in records their name; one signed out records only the time.
 
 A tool counts as up when `https://<host>/_auth/health` answers with 2xx. The last result is kept in D1 and pages use it as is; a result older than a minute is rechecked after the response, so a dead home server doesn't slow the hub down.
 

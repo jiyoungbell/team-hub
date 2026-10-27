@@ -133,11 +133,29 @@ describe("save input", () => {
 });
 
 describe("/sming-list", () => {
-  it("needs a session", async () => {
-    expect((await call("/sming-list")).status).toBe(200);
-    expect(await (await call("/sming-list")).text()).toContain("디스코드로 로그인");
-    expect((await call("/sming-list/search?q=x")).status).toBe(401);
-    expect(await (await form("/sming-list", null)).text()).toContain("디스코드로 로그인");
+  it("works without signing in", async () => {
+    const id = await newList(null);
+    const page = await (await call(`/sming-list/${id}`)).text();
+    expect(page).toContain('value="새 슴리"');
+    expect(page).not.toContain("디스코드로 로그인");
+    expect(page).not.toContain("chat-widget.js");
+    expect(page).not.toContain("/delete");
+    expect((await send(`/sming-list/${id}`, null, { version: 1, name: "비로그인", songs: { u1: ST }, items: ["u1"] })).status).toBe(200);
+    expect((await call("/sming-list/search?q=LOVE")).status).toBe(200);
+    const index = await (await call("/sming-list")).text();
+    expect(index).toContain("비로그인");
+    expect(index).not.toContain(" · 10."); // no name before the time
+
+    // Deleting still needs the maker or the admin; a list made signed out is the admin's.
+    expect((await form(`/sming-list/${id}/delete`, null)).status).toBe(403);
+    expect((await form(`/sming-list/${id}/delete`, await sessionOf(MEMBER))).status).toBe(403);
+    expect((await form(`/sming-list/${id}/delete`, await sessionOf(ME))).status).toBe(302);
+
+    // A signed-in edit carries the name; the rest of the hub still needs a session.
+    const id2 = await newList(null);
+    await send(`/sming-list/${id2}`, await sessionOf(MEMBER), { version: 1, name: "x", songs: {}, items: [] });
+    expect(await (await call("/sming-list")).text()).toContain("앵도");
+    expect(await (await call("/todo")).text()).toContain("디스코드로 로그인");
   });
 
   it("creates, saves and lists", async () => {
