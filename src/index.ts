@@ -131,6 +131,8 @@ export default {
       return json({ ok: true, data: await todoJson(env, session, now, ctx) });
     }
 
+    // A link pasted with a trailing slash still opens the page.
+    if (req.method === "GET" && /^\/sming-list(\/[\w-]{8})?\/$/.test(path)) return redirect(path.slice(0, -1) + url.search);
     if (path.startsWith("/sming-list") && !(req.method === "GET" && sming)) {
       if (path !== "/sming-list" && !path.startsWith("/sming-list/")) return notFoundPage();
       return smingApi(env, req, url, session, now);

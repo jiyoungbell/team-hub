@@ -146,6 +146,12 @@ describe("/sming-list", () => {
     expect(index).toContain("비로그인");
     expect(index).not.toContain(" · 10."); // no name before the time
 
+    for (const p of ["/sming-list/", `/sming-list/${id}/`]) {
+      const r = await call(p);
+      expect(r.status).toBe(302);
+      expect(r.headers.get("location")).toBe(p.slice(0, -1));
+    }
+
     // Deleting still needs the maker or the admin; a list made signed out is the admin's.
     expect((await form(`/sming-list/${id}/delete`, null)).status).toBe(403);
     expect((await form(`/sming-list/${id}/delete`, await sessionOf(MEMBER))).status).toBe(403);
