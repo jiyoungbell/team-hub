@@ -45,7 +45,7 @@
         tally.set(key, (tally.get(key) ?? 0) + 1);
         const cover = s.melon
           ? s.cover ? `<img class="sl-cover" src="${esc(s.cover)}" alt="" loading="lazy">` : `<span class="sl-cover"></span>`
-          : `<span class="sl-cover manual"></span>`;
+          : `<img class="sl-cover" src="/pulse-cover.jpg" alt="">`;
         const link = s.melon ? "" : `<button type="button" class="sl-link" data-link="${esc(key)}" aria-pressed="${linking === key}">연결</button>`;
         return `<div class="sl-row" role="row" data-i="${i}">
 <span class="sl-no" role="cell">${two(i + 1)}</span>
@@ -186,29 +186,39 @@
     rowsEl.children[to].querySelector("[data-grip]").focus();
   });
 
-  // Dragging by the grip moves the row among the others as it passes them (mouse and touch).
+  // Dragging by the grip: the row follows the pointer and the rows it passes slide aside. Nothing
+  // moves in the DOM until the drop, so the pointer stays captured (mouse and touch).
   rowsEl.addEventListener("pointerdown", (e) => {
     const g = e.target.closest("[data-grip]");
     if (!g || e.button > 0) return;
     e.preventDefault();
     const row = g.closest(".sl-row");
-    const from = Number(row.dataset.i);
+    const rows = [...rowsEl.children];
+    const from = rows.indexOf(row);
+    const h = row.offsetHeight;
+    const startY = e.clientY;
+    let to = from;
     row.classList.add("lift");
+    rowsEl.classList.add("dragging");
     g.setPointerCapture(e.pointerId);
     const onMove = (ev) => {
-      const rows = [...rowsEl.children];
-      const at = rows.indexOf(row);
-      const prev = rows[at - 1];
-      const next = rows[at + 1];
-      if (prev && ev.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) rowsEl.insertBefore(row, prev);
-      else if (next && ev.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) rowsEl.insertBefore(next, row);
+      // Kept inside the list, so the row can't be pulled past either end.
+      const dy = Math.max(-from * h, Math.min((rows.length - 1 - from) * h, ev.clientY - startY));
+      row.style.transform = `translateY(${dy}px)`;
+      to = Math.max(0, Math.min(rows.length - 1, from + Math.round(dy / h)));
+      rows.forEach((r, i) => {
+        if (r === row) return;
+        const shift = i > from && i <= to ? -h : i < from && i >= to ? h : 0;
+        r.style.transform = shift ? `translateY(${shift}px)` : "";
+      });
     };
     const onUp = () => {
       g.removeEventListener("pointermove", onMove);
       g.removeEventListener("pointerup", onUp);
       g.removeEventListener("pointercancel", onUp);
+      rowsEl.classList.remove("dragging");
+      rows.forEach((r) => (r.style.transform = ""));
       row.classList.remove("lift");
-      const to = [...rowsEl.children].indexOf(row);
       if (to === from) return;
       move(from, to);
       changed();

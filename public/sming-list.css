@@ -61,7 +61,6 @@
 .sl-res p { padding: 10px; color: var(--muted); font-size: 14px; }
 
 .sl-cover { width: 40px; height: 40px; border-radius: 6px; background: var(--card-line); object-fit: cover; display: block; }
-.sl-cover.manual { background: none; border: 1px dashed var(--card-hover); box-sizing: border-box; }
 
 .sl-manual { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid var(--card-line); background: var(--card); }
 .sl-manual[hidden] { display: none; }
@@ -82,6 +81,10 @@
 }
 .sl-row:hover { background: var(--hover); }
 .sl-row.lift { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); background: var(--card); }
+/* While dragging, the other rows slide; the held one follows the pointer without lag. */
+.dragging .sl-row { transition: transform 0.15s ease; }
+.dragging .sl-row.lift { transition: none; }
+.dragging, .dragging * { cursor: grabbing !important; user-select: none; }
 .sl-no { font-size: 14px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sl-title { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .sl-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
