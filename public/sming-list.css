@@ -155,15 +155,15 @@ a.sl-li:hover { background: var(--hover); }
 
 @media (max-width: 560px) {
   /* Phone: the song's length goes under its title, leaving room for the title on one line. */
-  .sl-row { grid-template-columns: 22px minmax(0, 1fr) auto 68px; column-gap: 10px; min-height: 64px; padding: 8px 0 8px 4px; }
-  .sl-row .sl-cv, .sl-row .sl-dur-c, .sl-act .sl-dup { display: none; }
+  .sl-row { grid-template-columns: 22px minmax(0, 1fr) auto 94px; column-gap: 10px; min-height: 64px; padding: 8px 0 8px 4px; }
+  .sl-row .sl-cv, .sl-row .sl-dur-c { display: none; }
   .sl-no { font-size: 13px; }
   .sl-title { flex-direction: column; align-items: flex-start; gap: 2px; }
   .sl-title b { max-width: 100%; line-height: 1.35; }
   .sl-subdur { display: inline; }
   .sl-link { min-height: 22px; padding: 0 8px; font-size: 11px; }
   .sl-row .sl-strong { font-size: 15px; }
-  .sl-act button { width: 32px; height: 40px; }
+  .sl-act button { width: 30px; height: 40px; }
   .sl-top { gap: 8px; }
   .sl-counts { font-size: 13px; gap: 4px 12px; }
   .sl-name { font-size: 22px; }

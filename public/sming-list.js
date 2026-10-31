@@ -339,8 +339,11 @@ ${s.cover ? `<img class="sl-cover" src="${esc(s.cover)}" alt="" loading="lazy">`
     const title = fTitle.value.trim();
     if (!sec) return fDur.setAttribute("aria-invalid", "true");
     if (!title) return;
-    const key = `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    st.songs[key] = { title, sec };
+    // The same song typed in again counts with the first one, like a Melon song picked twice.
+    const key =
+      Object.keys(st.songs).find((k) => !st.songs[k].melon && st.songs[k].title === title && st.songs[k].sec === sec) ??
+      `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    st.songs[key] ??= { title, sec };
     st.items.push(key);
     form.reset();
     form.hidden = true;
