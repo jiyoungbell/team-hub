@@ -293,6 +293,46 @@ describe("board", () => {
     expect(await html("/settings", sess)).toMatch(/<b class="n" data-late>1<\/b>/);
   });
 
+  it("lists a day's items, with overdue and undated ones under today", async () => {
+    notion.add("mine-today", { title: "오늘 내 일", status: "시작 전", who: ["센마인"], due: "2026-10-20" });
+    notion.add("done-today", { title: "끝낸 일", status: "완료", due: "2026-10-18", done: "2026-10-20" });
+    const page = await html("/todo", await sessionOf(ME));
+    const data = JSON.parse(page.slice(page.indexOf('id="todo-data">') + 15, page.indexOf("</script>", page.indexOf('id="todo-data">')))) as ClientData;
+    const sec = (boards: string, name: string) => {
+      const b = boards.slice(boards.indexOf('data-board="day"'), boards.indexOf('data-board="team"'));
+      const start = b.indexOf(`data-col="${name}"`);
+      return start < 0 ? "" : b.slice(start, b.indexOf('<div class="dsec"', start + 1) >>> 0);
+    };
+    const days = (o: object) =>
+      renderTodo({ ...data, changes: new Map(Object.entries(data.changes)) } as unknown as Parameters<typeof renderTodo>[0], true, o).boards;
+
+    const today = days({});
+    expect(page).toContain(today.slice(0, 200));
+    expect(sec(today, "late")).toContain("FLAREU 인증 인계");
+    expect(sec(today, "late")).toContain("4일 지남");
+    expect(sec(today, "late")).toContain('data-to="2026-10-20">오늘로');
+    expect(sec(today, "due")).toContain("오늘 내 일");
+    expect(sec(today, "due")).toContain('data-to="2026-10-21">내일로');
+    expect(sec(today, "done")).toContain("끝낸 일");
+    expect(sec(today, "undated")).toContain("음악방송 투표 가이드");
+    expect(sec(today, "due")).not.toContain("MAMA");
+    // The week from Monday 10/19, with what is left on each day.
+    expect(today).toContain('data-day="2026-10-19"');
+    expect(today).toContain('data-day="2026-10-25"');
+    expect(today).toMatch(/data-day="2026-10-20"[^>]*aria-label="10월 20일 화요일, 2개 남음"/);
+
+    const later = days({ day: "2026-10-22" });
+    expect(sec(later, "due")).toContain("MAMA 1차 인증 운영");
+    expect(sec(later, "due")).toContain("23:59");
+    expect(sec(later, "late") + sec(later, "undated")).toBe("");
+    expect(later).toContain('data-day="2026-10-20">오늘로 가기');
+    expect(days({ day: "2026-10-23" })).toContain("할 일 없음");
+
+    const mine = days({ mine: true });
+    expect(sec(mine, "due")).toContain("오늘 내 일");
+    expect(sec(mine, "late")).toBe("");
+  });
+
   it("keeps the item data from closing its script tag", async () => {
     notion.add(B, { title: "</script><script>alert(1)</script>", status: "진행 중" });
     const page = await html("/todo", await sessionOf(ME));

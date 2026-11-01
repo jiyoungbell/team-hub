@@ -41,26 +41,32 @@
   const stamp = () => new Date().toISOString();
 
   // pick: which list in the window is spread out to choose from ("who" | "teams").
-  const state = { sel: null, anchor: null, anchorCol: null, rect: null, err: false, pick: null };
+  // day: the day the day list shows; mine: only my items there.
+  const state = { sel: null, anchor: null, anchorCol: null, rect: null, err: false, pick: null, day: data.today, mine: store.get("todo-mine") === "1" };
 
+  const byNow = () => root.dataset.todoBy || "day";
   function setBy(by) {
-    if (by === "person") root.dataset.todoBy = "person";
+    if (by === "team" || by === "person") root.dataset.todoBy = by;
     else delete root.dataset.todoBy;
-    document.querySelectorAll("[data-by]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.by === (by === "person" ? "person" : "team"))));
+    document.querySelectorAll("[data-by]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.by === byNow())));
   }
   setBy(root.dataset.todoBy);
 
   // ---- Drawing
-  const paint = () => window.TodoView.renderTodo({ ...data, changes: new Map(Object.entries(data.changes)) }, true);
-  let view = paint(); // the page arrives drawn by the Worker; this is the same drawing
+  const paint = () => window.TodoView.renderTodo({ ...data, changes: new Map(Object.entries(data.changes)) }, true, { day: state.day, mine: state.mine });
+  let view = paint(); // the page arrives drawn by the Worker for today with everyone's items
   const flashKeys = new Set();
   const alias = new Map(); // a just-saved item's placeholder key → its real key, so the card stays put
 
   const colOf = (el) => el.closest("[data-col]")?.dataset.col || "";
-  const ident = (el) => (el.classList.contains("mk") ? "mk:" : "tc:") + (alias.get(el.dataset.open) || el.dataset.open);
+  // A row in the day list moves as a whole; its title button is what opens the window.
+  const ident = (el) => {
+    const k = el.dataset.row || el.dataset.open;
+    return (el.classList.contains("mk") ? "mk:" : el.dataset.row ? "dr:" : "tc:") + (alias.get(k) || k);
+  };
   function measure() {
     const out = [];
-    for (const el of document.querySelectorAll("[data-open]")) {
+    for (const el of document.querySelectorAll("[data-open]:not(.dr-main), [data-row]")) {
       const r = el.getBoundingClientRect();
       if (r.width || r.height) out.push({ el, r, id: ident(el), col: colOf(el) });
     }
@@ -99,6 +105,9 @@
     if (o.r.bottom < 0 || o.r.top > innerHeight) return;
     const g = o.el.cloneNode(true);
     g.removeAttribute("data-open");
+    g.removeAttribute("data-row");
+    g.querySelectorAll("[data-open], [data-done], [data-move]").forEach((x) => x.removeAttribute(x.dataset.open ? "data-open" : x.dataset.done ? "data-done" : "data-move"));
+    g.querySelector(".sel")?.classList.remove("sel");
     g.classList.remove("sel");
     g.setAttribute("aria-hidden", "true");
     g.tabIndex = -1;
@@ -228,7 +237,7 @@
     if (state.sel === key) {
       state.err = failed || (!res.ok && path !== "/todo/status");
       render(false);
-    }
+    } else if (failed) toast("저장 실패");
     return res;
   }
 
@@ -281,12 +290,21 @@
     return `<div class="d-seg" role="group" aria-label="상태">${seg}</div>${state.err ? '<p class="d-err" role="alert">저장 실패</p>' : ""}
 <dl class="kv"><dt>마감</dt><dd class="d-due"><input type="date" data-due value="${esc(x.ds ? x.ds.slice(0, 10) : "")}" aria-label="마감일">${
       x.ds ? `<button type="button" class="chip-x" data-due-clear aria-label="마감일 지우기">${ICON_X_SM}</button>` : ""
-    }<span data-due-tag>${dueTag(x)}</span></dd><dt>작업 팀</dt><dd>${chips("teams", x)}</dd><dt>담당자</dt><dd>${chips("who", x)}</dd><dt>분류</dt><dd>${esc(x.cat || "없음")}</dd>${
+    }<span data-due-tag>${dueTag(x)}</span></dd><dt></dt><dd class="d-quick">${quickDays(x.ds ? x.ds.slice(0, 10) : "", "data-due-set")}</dd><dt>작업 팀</dt><dd>${chips("teams", x)}</dd><dt>담당자</dt><dd>${chips("who", x)}</dd><dt>분류</dt><dd>${esc(x.cat || "없음")}</dd>${
       x.done ? `<dt>완료일</dt><dd>${esc(x.done)}</dd>` : ""
     }</dl>
 ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>` : ""}${x.next ? `<div class="blk"><h3>다음 행동</h3><p>${esc(x.next)}</p></div>` : ""}${
       x.log.length ? `<div class="blk"><h3>변경 기록</h3><div class="log">${x.log.map((l) => `<span>${esc(l)}</span>`).join("")}</div></div>` : ""
     }<div class="d-foot"><a class="notion" href="${esc(x.url)}" target="_blank" rel="noopener">노션에서 열기 ${ICON_OUT}</a><button type="button" class="del" data-delete>삭제</button></div>`;
+  }
+
+  // 오늘 / 내일 / 다음 주 월요일 as one tap.
+  function quickDays(on, attr) {
+    const t = data.today;
+    const back = (new Date(t + "T00:00:00Z").getUTCDay() + 6) % 7;
+    return [["오늘", t], ["내일", addDays(t, 1)], ["다음 주", addDays(t, 7 - back)]]
+      .map(([label, v]) => `<button type="button" class="chip" ${attr}="${v}" aria-pressed="${on === v}">${label}</button>`)
+      .join("");
   }
 
   function markSel() {
@@ -391,8 +409,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     if (back && back.isConnected) back.focus();
   }
 
-  function setStatus(to) {
-    const key = state.sel;
+  function setStatus(key, to) {
     const it = item(key);
     if (!it || it.status === to) return;
     const from = it.status;
@@ -440,19 +457,50 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     draw({ window: false });
   }
 
-  function setDue(v) {
-    const key = state.sel;
+  function setDue(key, v, delay = 800) {
     const it = item(key);
     if (!it || (it.due_start ? it.due_start.slice(0, 10) : null) === v) return;
     const before = it.due_start;
     it.due_start = v;
     it.due_end = null;
     state.err = false;
-    queueEdit(key, "due_start", before, v, 800);
+    queueEdit(key, "due_start", before, v, delay);
     draw();
     // While the date field has focus the window isn't redrawn; the D-day next to it is.
     const tag = overlay.querySelector("[data-due-tag]");
-    if (tag && view.details[key]) tag.innerHTML = dueTag(view.details[key]);
+    if (tag && view.details[key] && state.sel === key) tag.innerHTML = dueTag(view.details[key]);
+  }
+
+  // ---- The day list: tick it off, or move it to another day, with a moment to take it back.
+  const addDays = window.TodoView.addDays;
+  const md = (ymd) => `${+ymd.slice(5, 7)}/${+ymd.slice(8, 10)}`;
+  // What it was before it was done: the last status change to 완료 says, else 시작 전.
+  const beforeDone = (it) =>
+    ((data.changes[it.page_id] || []).find((c) => c.field === "status" && c.to_value === DONE) || {}).from_value || (data.statuses.includes(NEW) ? NEW : data.statuses[0]);
+
+  function toggleDone(key) {
+    const it = item(key);
+    if (!it || key.startsWith("tmp")) return;
+    const from = it.status;
+    const to = from === DONE ? beforeDone(it) : DONE;
+    setStatus(key, to);
+    if (to === DONE) toast("완료", "되돌리기", () => setStatus(key, from));
+  }
+
+  function moveTo(key, day) {
+    const it = item(key);
+    if (!it || key.startsWith("tmp")) return;
+    const before = it.due_start ? it.due_start.slice(0, 10) : null;
+    setDue(key, day, 0);
+    toast(`${md(day)}로 옮김`, "되돌리기", () => setDue(key, before, 0));
+  }
+
+  function showDay(day) {
+    if (!day || day === state.day) return;
+    state.day = day;
+    if (state.sel) close();
+    draw();
+    document.dispatchEvent(new CustomEvent("todo-day"));
   }
 
   // ---- Delete, with a few seconds to take it back
@@ -521,6 +569,15 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     });
     draw();
     reveal(cardFor(key));
+    // Added to a day other than the one on screen: say where it went.
+    if (byNow() === "day") {
+      const home = b.due || data.today;
+      if (home !== state.day) toast(b.due ? `${md(b.due)}에 추가됨` : "날짜 없이 추가됨", "보기", () => showDay(home));
+      else if (!b.due) {
+        const f = [...cardsOf(key)].find((el) => el.closest('[data-board="day"] .folded'));
+        if (f) toggleFold(f.closest(".folded").previousElementSibling, true);
+      }
+    }
     send("/todo/items", b, key).then((res) => {
       if (res && res.ok) return;
       data.items = data.items.filter((x) => x.page_id !== id);
@@ -536,29 +593,59 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     const rows = qa.querySelector(".qa-rows");
     const sug = qa.querySelector(".qa-sug");
     // touched: the chips for that list were set by hand or by @/#, so the defaults are gone.
-    const fresh = () => ({
+    // Picks stay from one add to the next and across visits; the due date follows the day being
+    // looked at until one is picked here (then it stays for the adds after it, until reload).
+    const defaults = () => ({
       who: view.pick.mine && view.pick.names.includes(view.pick.mine) ? [view.pick.mine] : [],
       teams: view.pick.myTeams.filter((t) => view.pick.teams.includes(t)),
-      due: "",
-      touched: {},
     });
-    let draft = fresh();
+    function loadDraft() {
+      const d = { ...defaults(), due: null, touched: {} };
+      try {
+        const kept = JSON.parse(store.get("todo-draft") || "null");
+        if (kept && kept.touched) {
+          if (kept.touched.who && Array.isArray(kept.who)) [d.who, d.touched.who] = [kept.who.filter((n) => view.pick.names.includes(n)), true];
+          if (kept.touched.teams && Array.isArray(kept.teams)) [d.teams, d.touched.teams] = [kept.teams.filter((n) => view.pick.teams.includes(n)), true];
+        }
+      } catch (e) {}
+      return d;
+    }
+    let draft = loadDraft();
+    const keepDraft = () => store.set("todo-draft", JSON.stringify({ who: draft.who, teams: draft.teams, touched: draft.touched }));
+    // "" is no due date; null is the day being looked at.
+    const dueNow = () => (draft.due === null ? (byNow() === "day" ? state.day : data.today) : draft.due);
+    const sumEl = qa.querySelector(".qa-sum");
+    const drawSum = () => {
+      const due = dueNow();
+      const bits = [...draft.who, ...draft.teams.map((t) => "#" + t)];
+      bits.push(!due ? "날짜 없음" : due === data.today ? "오늘" : due === addDays(data.today, 1) ? "내일" : md(due));
+      if (sumEl) sumEl.textContent = bits.join(" · ");
+    };
     const row = (label, field, all) =>
       `<div class="qa-row"><span class="qa-k">${label}</span><div class="chips">${all
         .map((v) => `<button type="button" class="chip" data-qa-toggle="${field}" data-v="${esc(v)}" aria-pressed="${draft[field].includes(v)}">${esc(v)}</button>`)
         .join("")}</div></div>`;
     const drawRows = () => {
+      const due = dueNow();
       rows.innerHTML =
         row("담당자", "who", view.pick.names) +
         row("작업 팀", "teams", view.pick.teams) +
-        `<div class="qa-row"><span class="qa-k">마감</span><input type="date" class="qa-due" value="${esc(draft.due)}" aria-label="마감일"></div>`;
+        `<div class="qa-row"><span class="qa-k">마감</span><div class="qa-dues"><input type="date" class="qa-due" value="${esc(due)}" aria-label="마감일">${quickDays(due, "data-qa-due")}<button type="button" class="chip" data-qa-due="" aria-pressed="${!due}">없음</button></div></div>`;
+      drawSum();
     };
+    drawSum();
+    document.addEventListener("todo-day", () => {
+      if (draft.due !== null) return;
+      if (qa.classList.contains("on")) drawRows();
+      else drawSum();
+    });
     const choose = (f, v) => {
       if (!draft.touched[f]) {
         draft[f] = [];
         draft.touched[f] = true;
       }
       if (!draft[f].includes(v)) draft[f].push(v);
+      keepDraft();
     };
 
     // @이름 / #팀 while typing. Matches the start of a name, a syllable still being typed
@@ -622,7 +709,6 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
 
     const show = () => {
       if (qa.classList.contains("on")) return;
-      draft = fresh();
       drawRows();
       qa.classList.add("on");
       more.inert = false;
@@ -644,9 +730,9 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
       });
       const title = clean(text);
       if (!title) return drawRows();
-      add({ title, assignees: draft.who.slice(), teams: draft.teams.slice(), due: draft.due || null });
+      const due = dueNow() || null;
+      add({ title, assignees: draft.who.slice(), teams: draft.teams.slice(), due });
       input.value = "";
-      draft = fresh();
       drawRows();
       input.focus();
     };
@@ -701,7 +787,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     // Chips and suggestions don't take focus, so the phone keyboard stays up and Enter still saves.
     for (const ev of ["pointerdown", "mousedown"]) {
       qa.addEventListener(ev, (e) => {
-        if (e.target.closest("[data-qa-toggle], [data-sug], .qa-go")) e.preventDefault();
+        if (e.target.closest("[data-qa-toggle], [data-qa-due], [data-sug], .qa-go")) e.preventDefault();
         else if (e.target.closest(".qa-line") && e.target !== input) {
           e.preventDefault();
           input.focus();
@@ -711,6 +797,11 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     qa.addEventListener("click", (e) => {
       const s = e.target.closest("[data-sug]");
       if (s) return pick(sugTok, s.dataset.sug);
+      const q = e.target.closest("[data-qa-due]");
+      if (q) {
+        draft.due = q.dataset.qaDue;
+        return drawRows();
+      }
       const c = e.target.closest("[data-qa-toggle]");
       if (!c) return;
       const f = c.dataset.qaToggle;
@@ -718,9 +809,15 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
       draft.touched[f] = true;
       draft[f] = draft[f].includes(v) ? draft[f].filter((n) => n !== v) : [...draft[f], v];
       c.setAttribute("aria-pressed", String(draft[f].includes(v)));
+      keepDraft();
+      drawSum();
     });
     rows.addEventListener("change", (e) => {
-      if (e.target.matches(".qa-due")) draft.due = e.target.value;
+      if (!e.target.matches(".qa-due")) return;
+      // The field keeps focus, so only what shows the choice is updated.
+      draft.due = e.target.value;
+      rows.querySelectorAll("[data-qa-due]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.qaDue === draft.due)));
+      drawSum();
     });
     qa.addEventListener("focusout", (e) => {
       if (qa.contains(e.relatedTarget)) return;
@@ -731,7 +828,9 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
 
   // ---- Events
   document.addEventListener("click", (e) => {
-    const t = e.target.closest("[data-by],[data-fold],[data-open],[data-close],[data-status],[data-pick],[data-toggle],[data-delete],[data-due-clear],[data-toast]");
+    const t = e.target.closest(
+      "[data-by],[data-fold],[data-open],[data-close],[data-status],[data-pick],[data-toggle],[data-delete],[data-due-clear],[data-due-set],[data-toast],[data-day],[data-mine],[data-done],[data-move]"
+    );
     if (!t) {
       const inWin = e.target.closest(".win");
       if (inWin && state.pick && !e.target.closest(".chips")) {
@@ -743,6 +842,20 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     if (t.dataset.by) {
       setBy(t.dataset.by);
       store.set("todo-by", t.dataset.by);
+      if (state.sel) close();
+      document.dispatchEvent(new CustomEvent("todo-day"));
+    } else if (t.dataset.day) {
+      showDay(t.dataset.day);
+    } else if (t.hasAttribute("data-mine")) {
+      state.mine = !state.mine;
+      store.set("todo-mine", state.mine ? "1" : "0");
+      draw();
+    } else if (t.dataset.done) {
+      toggleDone(t.dataset.done);
+    } else if (t.dataset.move) {
+      moveTo(t.dataset.move, t.dataset.to);
+    } else if (t.dataset.dueSet) {
+      setDue(state.sel, t.dataset.dueSet);
     } else if (t.hasAttribute("data-fold")) {
       toggleFold(t);
     } else if (t.dataset.open) {
@@ -750,7 +863,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     } else if (t.hasAttribute("data-close")) {
       close();
     } else if (t.dataset.status) {
-      setStatus(t.dataset.status);
+      setStatus(state.sel, t.dataset.status);
     } else if (t.dataset.pick) {
       state.pick = t.dataset.pick;
       render(false);
@@ -759,7 +872,7 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
     } else if (t.dataset.toggle) {
       toggle(t.dataset.toggle, t.dataset.v);
     } else if (t.hasAttribute("data-due-clear")) {
-      setDue(null);
+      setDue(state.sel, null);
     } else if (t.hasAttribute("data-delete")) {
       remove();
     } else if (t.hasAttribute("data-toast")) {
@@ -786,6 +899,24 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
   });
   overlay.addEventListener("change", (e) => {
     if (e.target.matches("[data-due]")) setDue(e.target.value || null);
+  });
+
+  // In the day list: ← → for the day before and after, T for today, / to start typing a new one.
+  document.addEventListener("keydown", (e) => {
+    if (!onTodo || state.sel || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    const a = document.activeElement;
+    if (typing(a) || (a && a.isContentEditable)) return;
+    if (e.key === "/") {
+      const input = document.querySelector(".qa-in");
+      if (!input) return;
+      e.preventDefault();
+      return input.focus();
+    }
+    if (byNow() !== "day") return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      showDay(addDays(state.day, e.key === "ArrowLeft" ? -1 : 1));
+    } else if (e.key === "t" || e.key === "T") showDay(data.today);
   });
 
   document.addEventListener("keydown", (e) => {
@@ -834,11 +965,22 @@ ${x.stage ? `<div class="blk"><h3>현재 단계</h3><p>${esc(x.stage)}</p></div>
       .catch(() => {});
   });
 
+  // A day or filter kept from before: draw the list for it now.
+  if (onTodo && state.mine) draw();
+
   // #<item> opens that item, unfolding its column if needed.
   const key = decodeURIComponent(location.hash.slice(1));
   if (onTodo && key && view.details[key]) document.fonts.ready.then(() => openFromHash(key));
 
   function openFromHash(key) {
+    // The day list jumps to the item's day; undated ones are under today.
+    const it = item(key);
+    if (byNow() === "day" && it) {
+      const due = it.due_start ? it.due_start.slice(0, 10) : null;
+      if (it.status === "완료") state.day = (it.done_on || due || data.today).slice(0, 10);
+      else state.day = !due || due < data.today ? data.today : due;
+      draw();
+    }
     const els = [...cardsOf(key)];
     let el = els.find((x) => x.getClientRects().length);
     if (!el) {

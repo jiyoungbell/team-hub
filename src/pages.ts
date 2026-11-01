@@ -141,8 +141,8 @@ export function homePage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
   );
 }
 
-// The team/person choice is applied before first paint so the board doesn't flip after loading.
-const BY_SCRIPT = `<script>try { if (localStorage.getItem("todo-by") === "person") document.documentElement.dataset.todoBy = "person"; } catch (e) {}</script>`;
+// The day/team/person choice is applied before first paint so the board doesn't flip after loading.
+const BY_SCRIPT = `<script>try { var b = localStorage.getItem("todo-by"); if (b === "team" || b === "person") document.documentElement.dataset.todoBy = b; } catch (e) {}</script>`;
 
 export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>, todo: TodoView, data: ClientData) {
   const assets = todoAssets(data);
@@ -152,13 +152,13 @@ export function todoPage(v: Viewer, tools: Tool[], health: Map<string, boolean>,
     tools,
     health,
     "할 일",
-    `<form class="qa" data-qa autocomplete="off"><div class="qa-line">${ICON.plus}<input class="qa-in" name="title" placeholder="할 일 추가   @담당자 #팀" maxlength="200" enterkeyhint="done" aria-label="할 일 추가" aria-autocomplete="list"><button type="submit" class="qa-go">추가</button></div><div class="qa-sug" role="listbox" aria-label="고르기" hidden></div><div class="qa-more" inert><div class="qa-more-in"><div class="qa-rows"></div></div></div></form>
+    `<form class="qa" data-qa autocomplete="off"><div class="qa-line">${ICON.plus}<input class="qa-in" name="title" placeholder="할 일 추가   @담당자 #팀" maxlength="200" enterkeyhint="done" aria-label="할 일 추가" aria-autocomplete="list"><span class="qa-sum" aria-hidden="true"></span><button type="submit" class="qa-go">추가</button></div><div class="qa-sug" role="listbox" aria-label="고르기" hidden></div><div class="qa-more" inert><div class="qa-more-in"><div class="qa-rows"></div></div></div></form>
 <div data-todo-rail>${todo.rail}</div><div data-todo-boards>${todo.boards || ""}</div><p class="empty" data-todo-empty${data.items.length ? " hidden" : ""}>할 일 없음</p>`,
     {
       ...assets,
       head: BY_SCRIPT + assets.head,
       mainClass: "todo",
-      heading: `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="보기 방식"><button type="button" data-by="team" aria-pressed="true">팀별</button><button type="button" data-by="person" aria-pressed="false">사람별</button></div></div>`
+      heading: `<div class="head"><h1>할 일</h1><div class="seg" role="group" aria-label="보기 방식"><button type="button" data-by="day" aria-pressed="true">일별</button><button type="button" data-by="team" aria-pressed="false">팀별</button><button type="button" data-by="person" aria-pressed="false">사람별</button></div></div>`
     }
   );
 }
