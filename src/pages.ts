@@ -1,7 +1,7 @@
 import type { Tool } from "./gate";
 import { ICON, TOOL_ICONS, toolIcon } from "./icons";
 import { clock, type SmingList, type SmingRow } from "./sming-list";
-import type { HubUser, Meta, Person } from "./todo";
+import type { HubUser, Meta, Person, RosterName } from "./todo";
 import { inlineJson, type ClientData, type TodoView } from "./todo-view";
 
 // Set at deploy to a hash of the to-do scripts and styles, so a page never runs with an older
@@ -276,6 +276,8 @@ export interface AdminTodo {
   names: string[]; // Notion assignee names
   people: Person[];
   users: HubUser[];
+  pick: string[]; // the assignee pick list as it is now
+  roster: RosterName[];
 }
 
 function adminTodo(t: AdminTodo) {
@@ -299,6 +301,28 @@ function adminTodo(t: AdminTodo) {
 <dl class="facts"><dt>마지막 동기화</dt><dd>${when(m.synced_at)}</dd>${
     m.failed_at ? `<dt>마지막 실패</dt><dd>${when(m.failed_at)} <span class="muted">${esc(m.error ?? "")}</span></dd>` : ""
   }</dl>
+</section>
+<section class="block"><h2>담당자 목록</h2>
+<p class="muted">할 일에 고를 수 있는 이름. 뺀 이름도 이미 붙은 할 일에는 남아요.</p>
+<form class="mrow" method="post" action="/admin/todo/roster"><input type="hidden" name="action" value="add"><input name="name" maxlength="100" required placeholder="이름" aria-label="추가할 이름"><button class="btn">추가</button></form>
+<div class="members">${t.pick
+    .map((name) => {
+      const added = t.roster.some((r) => r.name === name && !r.hidden);
+      return `<form class="member" method="post" action="/admin/todo/roster"><input type="hidden" name="name" value="${esc(name)}"><input type="hidden" name="action" value="${added ? "reset" : "hide"}"><span>${esc(name)}${
+        added ? ` <span class="muted">직접 추가</span>` : ""
+      }</span><button class="btn quiet" aria-label="${esc(name)} 빼기">빼기</button></form>`;
+    })
+    .join("")}</div>${
+    t.roster.some((r) => r.hidden)
+      ? `<h3 class="muted" style="font-size:14px">뺀 이름</h3><div class="members">${t.roster
+          .filter((r) => r.hidden)
+          .map(
+            (r) =>
+              `<form class="member off" method="post" action="/admin/todo/roster"><input type="hidden" name="name" value="${esc(r.name)}"><input type="hidden" name="action" value="reset"><span>${esc(r.name)}</span><button class="btn quiet" aria-label="${esc(r.name)} 되살리기">되살리기</button></form>`
+          )
+          .join("")}</div>`
+      : ""
+  }
 </section>
 <section class="block"><h2>이름 매칭</h2>
 ${rows || `<p class="empty">담당자 없음</p>`}

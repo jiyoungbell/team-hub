@@ -125,6 +125,11 @@ export interface HubUser {
   name: string;
 }
 
+export interface RosterName {
+  name: string;
+  hidden: number;
+}
+
 // Who a Notion assignee is on the hub: the admin's pick, else the hub user with the same nickname.
 export function ownerOf(name: string, people: Person[], users: HubUser[]): string | null {
   const set = people.find((p) => p.notion_name === name);
@@ -134,17 +139,19 @@ export function ownerOf(name: string, people: Person[], users: HubUser[]): strin
 
 const isOpen = (x: TodoItem) => x.status !== HELD && x.status !== DONE;
 
-// Names to pick as assignees: Notion's options, names already on items and every hub user (by
-// the Notion name the admin matched, else the nickname). Mine first, then busiest, then 가나다.
-// Notion doesn't take commas in option names.
-export function assigneeNames(items: TodoItem[], options: Options, people: Person[], users: HubUser[], myId: string) {
+// Names to pick as assignees: Notion's options, names already on items, every hub user (by the
+// Notion name the admin matched, else the nickname) and names the admin added, less the ones the
+// admin took off. Mine first, then busiest, then 가나다. Notion doesn't take commas in option names.
+export function assigneeNames(items: TodoItem[], options: Options, people: Person[], users: HubUser[], myId: string, roster: RosterName[] = []) {
   const nameOf = (u: HubUser) => people.find((p) => p.user_id === u.id)?.notion_name ?? u.name;
   const open = new Map<string, number>();
   for (const x of items) for (const w of x.assignees) open.set(w, (open.get(w) ?? 0) + (isOpen(x) ? 1 : 0));
   const me = users.find((u) => u.id === myId);
   const mine = me ? nameOf(me) : "";
-  const rest = [...new Set([...options.assignees, ...items.flatMap((x) => x.assignees), ...users.map(nameOf)])]
-    .filter((n) => n && n !== mine && !n.includes(","))
+  const hidden = new Set(roster.filter((r) => r.hidden).map((r) => r.name));
+  const added = roster.filter((r) => !r.hidden).map((r) => r.name);
+  const rest = [...new Set([...options.assignees, ...items.flatMap((x) => x.assignees), ...users.map(nameOf), ...added])]
+    .filter((n) => n && n !== mine && !n.includes(",") && !hidden.has(n))
     .sort((a, b) => (open.get(b) ?? 0) - (open.get(a) ?? 0) || a.localeCompare(b, "ko"));
   return { names: mine && !mine.includes(",") ? [mine, ...rest] : rest, mine };
 }
@@ -153,15 +160,19 @@ export const teamsOf = (s: string | null | undefined) => list(s);
 
 const LOG_PER_ITEM = 5;
 
+export const readRoster = async (env: Env) =>
+  (await env.DB.prepare("SELECT name, hidden FROM todo_roster ORDER BY name").all<RosterName>()).results;
+
 const readPeople = (env: Env) =>
   Promise.all([
     env.DB.prepare("SELECT notion_name, user_id FROM todo_people").all<Person>(),
-    env.DB.prepare("SELECT id, name FROM users").all<HubUser>()
-  ]).then(([p, u]) => ({ people: p.results, users: u.results }));
+    env.DB.prepare("SELECT id, name FROM users").all<HubUser>(),
+    readRoster(env)
+  ]).then(([p, u, roster]) => ({ people: p.results, users: u.results, roster }));
 
 export async function loadTodo(env: Env, session: Session, now: number, ctx?: ExecutionContext): Promise<TodoData> {
   const read = () => Promise.all([readMeta(env), readItems(env)]);
-  const [[meta0, items0], { people, users }, changes] = await Promise.all([
+  const [[meta0, items0], { people, users, roster }, changes] = await Promise.all([
     read(),
     readPeople(env),
     env.DB.prepare("SELECT page_id, user_name, field, from_value, to_value, at FROM todo_changes ORDER BY at DESC LIMIT 500").all<Change>()
@@ -192,7 +203,7 @@ export async function loadTodo(env: Env, session: Session, now: number, ctx?: Ex
     myTeams: teamsOf(session.teams),
     changes: byPage,
     today: kstDay(now),
-    ...assigneeNames(items, meta.options, people, users, session.userId),
+    ...assigneeNames(items, meta.options, people, users, session.userId, roster),
     teams: orderTeams(meta.options.teams)
   };
 }
@@ -263,11 +274,11 @@ async function notionWrite(what: string, page: string | null, f: () => Promise<W
 }
 
 async function choices(env: Env, userId: string) {
-  const [meta, items, { people, users }] = await Promise.all([readMeta(env), readItems(env), readPeople(env)]);
+  const [meta, items, { people, users, roster }] = await Promise.all([readMeta(env), readItems(env), readPeople(env)]);
   return {
     statuses: meta.options.statuses.length ? meta.options.statuses : STATUSES,
     teams: meta.options.teams.length ? meta.options.teams : TEAM_ORDER,
-    names: assigneeNames(items, meta.options, people, users, userId).names
+    names: assigneeNames(items, meta.options, people, users, userId, roster).names
   };
 }
 

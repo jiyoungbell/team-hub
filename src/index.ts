@@ -9,6 +9,7 @@ import { recheck } from "./recheck";
 import { currentSession, revokeSession, type Session } from "./session";
 import { canDelete, createList, deleteList, LIST_ID, listLists, loadList, saveList } from "./sming-list";
 import {
+  assigneeNames,
   changeStatus,
   createItem,
   deleteItem,
@@ -16,7 +17,9 @@ import {
   lateCount,
   loadTodo,
   orderTeams,
+  readItems,
   readMeta,
+  readRoster,
   restoreItem,
   STATUSES,
   teamsOf,
@@ -208,14 +211,17 @@ export default {
     }
     if (path === "/admin") {
       const error = ADMIN_ERRORS[url.searchParams.get("error") ?? ""] ?? null;
-      const [users, people, hubUsers, assignees] = await Promise.all([
+      const [users, people, hubUsers, assignees, roster, items] = await Promise.all([
         listUsers(env, now),
         env.DB.prepare("SELECT notion_name, user_id FROM todo_people").all<Person>(),
         env.DB.prepare("SELECT id, name FROM users ORDER BY name").all<HubUser>(),
-        env.DB.prepare("SELECT DISTINCT j.value AS name FROM todo_items, json_each(todo_items.assignees) j").all<{ name: string }>()
+        env.DB.prepare("SELECT DISTINCT j.value AS name FROM todo_items, json_each(todo_items.assignees) j").all<{ name: string }>(),
+        readRoster(env),
+        readItems(env)
       ]);
       const names = [...new Set([...meta.options.assignees, ...assignees.results.map((r) => r.name)])];
-      return adminPage(viewer, tools, health, users, error, { meta, names, people: people.results, users: hubUsers.results });
+      const pick = assigneeNames(items, meta.options, people.results, hubUsers.results, "", roster).names.sort((a, b) => a.localeCompare(b, "ko"));
+      return adminPage(viewer, tools, health, users, error, { meta, names, people: people.results, users: hubUsers.results, pick, roster });
     }
     return notFoundPage();
   },

@@ -282,6 +282,32 @@ describe("board", () => {
     expect((await post("/admin/todo/people", sess, { name: "총대", user: "" })).status).toBe(404);
   });
 
+  it("lets the admin add names to the assignee list and take them off", async () => {
+    const admin = await sessionOf(ME);
+    const names = async () => {
+      const page = await html("/todo", admin);
+      return (JSON.parse(page.slice(page.indexOf('id="todo-data">') + 15, page.indexOf("</script>", page.indexOf('id="todo-data">')))) as ClientData).names;
+    };
+    expect(await names()).toContain("앵도");
+    expect((await post("/admin/todo/roster", admin, { name: "  새  멤버 ", action: "add" })).headers.get("location")).toBe("/admin");
+    await post("/admin/todo/roster", admin, { name: "앵도", action: "hide" });
+    expect(await names()).toContain("새 멤버");
+    expect(await names()).not.toContain("앵도");
+    const page = await html("/admin", admin);
+    expect(page).toContain("직접 추가");
+    expect(page).toContain("앵도 되살리기");
+
+    // A name taken off can't be given to a new item, and one added can.
+    const add = (who: string) => send("/todo/items", admin, { title: "x", assignees: [who], teams: [], due: null });
+    expect((await add("앵도")).status).toBe(400);
+    expect((await add("새 멤버")).status).toBe(200);
+
+    await post("/admin/todo/roster", admin, { name: "앵도", action: "reset" });
+    expect(await names()).toContain("앵도");
+    expect((await post("/admin/todo/roster", admin, { name: "a,b", action: "add" })).headers.get("location")).toBe("/admin?error=member");
+    expect((await post("/admin/todo/roster", await sessionOf(MEMBER), { name: "x", action: "add" })).status).toBe(404);
+  });
+
   it("shows overdue counts in the menu and the date rail on home", async () => {
     const sess = await sessionOf(ME);
     const home = await html("/", sess);

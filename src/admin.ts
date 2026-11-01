@@ -23,7 +23,12 @@ export const listUsers = async (env: Env, now: number) =>
       .all<AdminUser>()
   ).results;
 
-export const ADMIN_ERRORS: Record<string, string> = { host: "잘못된 주소", name: "잘못된 이름", position: "잘못된 순서" };
+export const ADMIN_ERRORS: Record<string, string> = {
+  host: "잘못된 주소",
+  name: "잘못된 이름",
+  position: "잘못된 순서",
+  member: "이름은 1~100자, 쉼표 없이"
+};
 
 const back = (error?: keyof typeof ADMIN_ERRORS) => redirect(error ? `/admin?error=${error}` : "/admin");
 
@@ -61,6 +66,19 @@ export async function adminPost(env: Env, req: Request, path: string, now: numbe
     if (!user) await env.DB.prepare("DELETE FROM todo_people WHERE notion_name = ?").bind(name).run();
     else if (await env.DB.prepare("SELECT 1 FROM users WHERE id = ?").bind(user).first()) {
       await env.DB.prepare("INSERT OR REPLACE INTO todo_people (notion_name, user_id) VALUES (?, ?)").bind(name, user).run();
+    }
+    return back();
+  }
+
+  // The assignee pick list: add a name, take one off it, or put a hand-set one back to normal.
+  if (path === "/admin/todo/roster") {
+    const name = field("name").replace(/\s+/g, " ");
+    const action = field("action");
+    if (!name || name.length > 100 || name.includes(",")) return back("member");
+    if (action === "add" || action === "hide") {
+      await env.DB.prepare("INSERT OR REPLACE INTO todo_roster (name, hidden) VALUES (?, ?)").bind(name, action === "hide" ? 1 : 0).run();
+    } else if (action === "reset") {
+      await env.DB.prepare("DELETE FROM todo_roster WHERE name = ?").bind(name).run();
     }
     return back();
   }
