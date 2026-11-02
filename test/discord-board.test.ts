@@ -95,7 +95,7 @@ describe("posting", () => {
     });
   });
 
-  it("posts once, then edits only when the board changed", async () => {
+  it("posts once, then moves to the bottom only when the board changed", async () => {
     await postBoard(env, NOW);
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /channels/chan/messages"]);
     expect(calls[0]!.body!.embeds[0]!.description).toContain("첫 일");
@@ -104,20 +104,21 @@ describe("posting", () => {
     await postBoard(env, NOW + 60_000);
     expect(calls).toEqual([]);
 
+    // The new one goes in first, so the channel is never without a board.
     await env.DB.prepare("UPDATE todo_items SET title = '바뀐 일'").run();
     await postBoard(env, NOW + 120_000);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["PATCH /channels/chan/messages/m1"]);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /channels/chan/messages", "DELETE /channels/chan/messages/m1"]);
     expect(calls[0]!.body!.embeds[0]!.description).toContain("바뀐 일");
+    expect((await env.DB.prepare("SELECT message_id FROM discord_board").all()).results).toEqual([{ message_id: "m2" }]);
   });
 
-  it("posts again when its message was deleted by hand", async () => {
+  it("doesn't mind an old message already deleted by hand", async () => {
     await postBoard(env, NOW);
     gone.add("m1");
     await env.DB.prepare("UPDATE todo_items SET title = '바뀐 일'").run();
-    calls = [];
     await postBoard(env, NOW + 60_000);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["PATCH /channels/chan/messages/m1", "DELETE /channels/chan/messages/m1", "POST /channels/chan/messages"]);
     expect((await env.DB.prepare("SELECT message_id FROM discord_board").first())!.message_id).toBe("m2");
+    expect((await env.DB.prepare("SELECT busy_at FROM discord_meta").first())!.busy_at).toBeNull();
   });
 
   it("does nothing until the bot and channel are set, or while another run is going", async () => {

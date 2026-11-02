@@ -1,5 +1,5 @@
-// The to-do board in a view-only Discord channel: a few bot messages edited in place, so the
-// channel always reads as the current board. Changes are made on the hub; the last line links there.
+// The to-do board in a Discord channel: a few bot messages, posted again at the bottom whenever the
+// board changes, so the latest board is always the last thing in the channel. Changes are made on the hub; the last line links there.
 import { log, MINUTE, type Env } from "./env";
 import type { TodoItem } from "./notion";
 import { readItems, readMeta, orderTeams } from "./todo";
@@ -141,8 +141,8 @@ async function discord(env: Env, method: string, path: string, body?: unknown): 
 
 class DiscordError extends Error {}
 
-// Brings the channel's messages up to date. Only messages whose contents changed are edited. A
-// message missing from the channel (deleted by hand) means they're all posted again, in order.
+// Brings the channel up to date. Nothing is sent while the board reads the same; when it changes,
+// it is posted again at the bottom of the channel (people chat there too) and the old one deleted.
 // One run at a time; a run that finds another going leaves it to that one or the next minute's.
 export async function postBoard(env: Env, now: number): Promise<void> {
   const channel = env.DISCORD_TODO_CHANNEL?.trim();
@@ -158,38 +158,33 @@ export async function postBoard(env: Env, now: number): Promise<void> {
     if (meta.synced_at === null) return;
     const msgs = renderBoard(items, orderTeams(meta.options.teams), kstDay(now), env.HUB_ORIGIN);
     const hashes = await Promise.all(msgs.map(hashOf));
-    let have = rows.results;
-    if (have.length > msgs.length) {
-      for (const r of have.slice(msgs.length)) await discord(env, "DELETE", `/channels/${channel}/messages/${r.message_id}`);
-      await env.DB.prepare("DELETE FROM discord_board WHERE channel = ? AND slot >= ?").bind(channel, msgs.length).run();
-      have = have.slice(0, msgs.length);
-    }
+    const have = rows.results;
+    if (have.length === msgs.length && have.every((r, i) => r.hash === hashes[i])) return;
+
+    // Changed: the new board goes in at the bottom, under whatever was said since, then the old one
+    // goes. A message already deleted by hand is fine.
     const stamp = new Date(now).toISOString();
     const body = (m: Message) => ({ embeds: m.embeds.map((e, i) => (i === m.embeds.length - 1 ? { ...e, timestamp: stamp } : e)), allowed_mentions: { parse: [] } });
-    const save = (slot: number, id: string, hash: string) =>
-      env.DB.prepare("INSERT OR REPLACE INTO discord_board (channel, slot, message_id, hash) VALUES (?, ?, ?, ?)").bind(channel, slot, id, hash).run();
-
-    for (let i = 0; i < msgs.length; i++) {
-      const row = have[i];
-      if (row && row.hash === hashes[i]) continue;
-      if (row) {
-        const res = await discord(env, "PATCH", `/channels/${channel}/messages/${row.message_id}`, body(msgs[i]!));
-        if (res.ok) {
-          await save(i, row.message_id, hashes[i]!);
-          continue;
-        }
-        if (res.status !== 404) throw new DiscordError(`edit ${res.status}`);
-        // Gone: start over so the messages stay in order.
-        for (const r of have) await discord(env, "DELETE", `/channels/${channel}/messages/${r.message_id}`);
-        await env.DB.prepare("DELETE FROM discord_board WHERE channel = ?").bind(channel).run();
-        have = [];
-        i = -1;
-        continue;
+    const drop = async (ids: string[]) => {
+      for (const id of ids) {
+        const res = await discord(env, "DELETE", `/channels/${channel}/messages/${id}`);
+        if (!res.ok && res.status !== 404) log("discord board delete failed", { id, status: res.status });
       }
-      const res = await discord(env, "POST", `/channels/${channel}/messages`, body(msgs[i]!));
-      if (!res.ok) throw new DiscordError(`post ${res.status}`);
-      await save(i, ((await res.json()) as { id: string }).id, hashes[i]!);
+    };
+    const posted: string[] = [];
+    for (const m of msgs) {
+      const res = await discord(env, "POST", `/channels/${channel}/messages`, body(m));
+      if (!res.ok) {
+        await drop(posted); // half a board would sit under the old one
+        throw new DiscordError(`post ${res.status}`);
+      }
+      posted.push(((await res.json()) as { id: string }).id);
     }
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM discord_board WHERE channel = ?").bind(channel),
+      ...posted.map((id, i) => env.DB.prepare("INSERT INTO discord_board (channel, slot, message_id, hash) VALUES (?, ?, ?, ?)").bind(channel, i, id, hashes[i]!))
+    ]);
+    await drop(have.map((r) => r.message_id));
   } catch (e) {
     if (!(e instanceof DiscordError) && !(e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError" || e instanceof TypeError))) throw e;
     log("discord board failed", { error: e.message });
