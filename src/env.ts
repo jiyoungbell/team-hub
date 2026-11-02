@@ -12,6 +12,9 @@ export interface Env {
   GATE_TOKEN: string; // shared with team-gate for /api/gate/*
   ADMIN_DISCORD_ID?: string;
   NOTION_TOKEN?: string;
+  // The view-only to-do channel (src/discord-board.ts); off until both are set.
+  DISCORD_BOT_TOKEN?: string;
+  DISCORD_TODO_CHANNEL?: string;
 }
 
 export const MINUTE = 60_000;

@@ -1,4 +1,5 @@
 import { ADMIN_ERRORS, adminPost, listUsers } from "./admin";
+import { postBoard } from "./discord-board";
 import { callback, clearSession, login, redirect } from "./auth";
 import { isAdmin, log, type Env } from "./env";
 import { gateApi, go, listTools } from "./gate";
@@ -22,6 +23,7 @@ import {
   readRoster,
   restoreItem,
   STATUSES,
+  syncTodo,
   teamsOf,
   type HubUser,
   type Person,
@@ -60,6 +62,8 @@ async function todoWrite(env: Env, req: Request, session: Session, now: number, 
   if (req.headers.get("origin") !== env.HUB_ORIGIN) return json({ ok: false }, 403);
   const result = await write(env, session, await req.json().catch(() => null), now);
   if (result.status !== 200 && result.status !== 409) return json({ ok: false }, result.status);
+  // The Discord channel follows a moment after the answer.
+  if (ctx) ctx.waitUntil(postBoard(env, Date.now()));
   // 409: someone changed it in Notion first; the item now shows Notion's value.
   return json({ ok: result.status === 200, key: result.item?.page_id.replace(/-/g, ""), data: await todoJson(env, session, now, ctx) }, result.status);
 }
@@ -226,7 +230,13 @@ export default {
     return notFoundPage();
   },
 
-  async scheduled(_ctrl, env): Promise<void> {
-    await recheck(env, Date.now());
+  async scheduled(ctrl, env): Promise<void> {
+    const now = Date.now();
+    if (new Date(ctrl.scheduledTime).getUTCMinutes() % 30 === 0) await recheck(env, now);
+    // Picks up changes made in Notion itself, then the channel (both skip when nothing is due).
+    if (env.DISCORD_TODO_CHANNEL && env.DISCORD_BOT_TOKEN) {
+      await syncTodo(env, now);
+      await postBoard(env, now);
+    }
   }
 } satisfies ExportedHandler<Env>;

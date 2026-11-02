@@ -7,8 +7,9 @@
   "observability": { "enabled": true },
   // Static files (styles, logos, header.js) are served before the Worker runs.
   "assets": { "directory": "./public" },
-  // Role recheck runs in small batches (see src/recheck.ts); each person is still checked once a day.
-  "triggers": { "crons": ["*/30 * * * *"] },
+  // Every minute: the Notion copy and the Discord to-do channel. Every 30 minutes of those, the role
+  // recheck in small batches (see src/recheck.ts); each person is still checked once a day.
+  "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "team-hub", "database_id": "8c8c8cc1-8e5e-48c2-8183-ea321ce6a10e", "migrations_dir": "migrations" }
   ],
