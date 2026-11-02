@@ -141,8 +141,17 @@ async function discord(env: Env, method: string, path: string, body?: unknown): 
 
 class DiscordError extends Error {}
 
-// Brings the channel up to date. Nothing is sent while the board reads the same; when it changes,
-// it is posted again at the bottom of the channel (people chat there too) and the old one deleted.
+// Whether the board's messages are the newest in the channel, in order.
+async function atBottom(env: Env, channel: string, ids: string[]): Promise<boolean> {
+  const res = await discord(env, "GET", `/channels/${channel}/messages?limit=${ids.length}`);
+  if (!res.ok) return false;
+  const newest = ((await res.json()) as { id: string }[]).map((m) => m.id).reverse();
+  return newest.length === ids.length && newest.every((id, i) => id === ids[i]);
+}
+
+// Brings the channel up to date. Nothing is sent while the board reads the same. When it changes,
+// it's edited in place if it's still the last thing in the channel; if people have talked under
+// it, it's posted again at the bottom and the old one deleted.
 // One run at a time; a run that finds another going leaves it to that one or the next minute's.
 export async function postBoard(env: Env, now: number): Promise<void> {
   const channel = env.DISCORD_TODO_CHANNEL?.trim();
@@ -161,10 +170,24 @@ export async function postBoard(env: Env, now: number): Promise<void> {
     const have = rows.results;
     if (have.length === msgs.length && have.every((r, i) => r.hash === hashes[i])) return;
 
-    // Changed: the new board goes in at the bottom, under whatever was said since, then the old one
-    // goes. A message already deleted by hand is fine.
     const stamp = new Date(now).toISOString();
     const body = (m: Message) => ({ embeds: m.embeds.map((e, i) => (i === m.embeds.length - 1 ? { ...e, timestamp: stamp } : e)), allowed_mentions: { parse: [] } });
+
+    // Still the last thing in the channel: the changed messages are edited where they are.
+    if (have.length === msgs.length && (await atBottom(env, channel, have.map((r) => r.message_id)))) {
+      let edited = true;
+      for (let i = 0; i < msgs.length && edited; i++) {
+        if (have[i]!.hash === hashes[i]) continue;
+        const res = await discord(env, "PATCH", `/channels/${channel}/messages/${have[i]!.message_id}`, body(msgs[i]!));
+        if (res.ok) await env.DB.prepare("UPDATE discord_board SET hash = ? WHERE channel = ? AND slot = ?").bind(hashes[i]!, channel, i).run();
+        else if (res.status === 404) edited = false; // deleted meanwhile: post it again below
+        else throw new DiscordError(`edit ${res.status}`);
+      }
+      if (edited) return;
+    }
+
+    // Something was said under it: the new board goes in at the bottom, then the old one goes. A
+    // message already deleted by hand is fine.
     const drop = async (ids: string[]) => {
       for (const id of ids) {
         const res = await discord(env, "DELETE", `/channels/${channel}/messages/${id}`);

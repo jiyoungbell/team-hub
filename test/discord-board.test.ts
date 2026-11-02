@@ -74,50 +74,74 @@ describe("discord board", () => {
 describe("posting", () => {
   let env: Env;
   let calls: { method: string; path: string; body?: { embeds: { description: string }[] } }[];
-  let gone: Set<string>;
+  let channel: string[]; // message ids, oldest first
   let n: number;
+  const sent = () => calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`);
+  const chat = () => channel.push(`u${++n}`);
+  const rename = (t: string) => env.DB.prepare("UPDATE todo_items SET title = ?").bind(t).run();
 
   beforeEach(async () => {
     env = { ...(await testEnv()), DISCORD_BOT_TOKEN: "bot-token\n", DISCORD_TODO_CHANNEL: "chan" };
     await env.DB.prepare("UPDATE todo_meta SET synced_at = ?, options = ? WHERE id = 1").bind(NOW, JSON.stringify({ statuses: [], teams: ["SNS"], assignees: [] })).run();
     await env.DB.prepare("INSERT INTO todo_items (page_id, title, status, teams, assignees, due_start, url, edited_at) VALUES ('a', '첫 일', '시작 전', '[\"SNS\"]', '[]', ?, 'u', 'e')").bind(TODAY).run();
     calls = [];
-    gone = new Set();
+    channel = [];
     n = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
       expect(new Headers(init?.headers).get("authorization")).toBe("Bot bot-token");
       const path = url.pathname.replace("/api/v10", "");
-      calls.push({ method: init?.method ?? "GET", path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-      if (init?.method === "POST") return Response.json({ id: `m${++n}` });
-      if (gone.has(path.split("/").at(-1)!)) return Response.json({ code: 10008 }, { status: 404 });
+      const method = init?.method ?? "GET";
+      calls.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (method === "GET") return Response.json(channel.slice(-Number(url.searchParams.get("limit"))).reverse().map((id) => ({ id })));
+      if (method === "POST") {
+        channel.push(`m${++n}`);
+        return Response.json({ id: `m${n}` });
+      }
+      const id = path.split("/").at(-1)!;
+      if (!channel.includes(id)) return Response.json({ code: 10008 }, { status: 404 });
+      if (method === "DELETE") channel = channel.filter((x) => x !== id);
       return Response.json({});
     });
   });
 
-  it("posts once, then moves to the bottom only when the board changed", async () => {
+  it("posts once, edits in place while it's the last thing in the channel, and sends nothing when unchanged", async () => {
     await postBoard(env, NOW);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /channels/chan/messages"]);
+    expect(sent()).toEqual(["POST /channels/chan/messages"]);
     expect(calls[0]!.body!.embeds[0]!.description).toContain("첫 일");
 
     calls = [];
     await postBoard(env, NOW + 60_000);
     expect(calls).toEqual([]);
 
-    // The new one goes in first, so the channel is never without a board.
-    await env.DB.prepare("UPDATE todo_items SET title = '바뀐 일'").run();
+    await rename("바뀐 일");
     await postBoard(env, NOW + 120_000);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /channels/chan/messages", "DELETE /channels/chan/messages/m1"]);
-    expect(calls[0]!.body!.embeds[0]!.description).toContain("바뀐 일");
-    expect((await env.DB.prepare("SELECT message_id FROM discord_board").all()).results).toEqual([{ message_id: "m2" }]);
+    expect(sent()).toEqual(["PATCH /channels/chan/messages/m1"]);
+    expect(calls.at(-1)!.body!.embeds[0]!.description).toContain("바뀐 일");
+    expect(channel).toEqual(["m1"]);
   });
 
-  it("doesn't mind an old message already deleted by hand", async () => {
+  it("moves to the bottom when people talked under it, new one first", async () => {
     await postBoard(env, NOW);
-    gone.add("m1");
-    await env.DB.prepare("UPDATE todo_items SET title = '바뀐 일'").run();
+    chat();
+    calls = [];
+    // Talk alone doesn't move it.
     await postBoard(env, NOW + 60_000);
-    expect((await env.DB.prepare("SELECT message_id FROM discord_board").first())!.message_id).toBe("m2");
+    expect(calls).toEqual([]);
+
+    await rename("바뀐 일");
+    await postBoard(env, NOW + 120_000);
+    expect(sent()).toEqual(["POST /channels/chan/messages", "DELETE /channels/chan/messages/m1"]);
+    expect(channel).toEqual(["u2", "m3"]);
+    expect((await env.DB.prepare("SELECT message_id FROM discord_board").all()).results).toEqual([{ message_id: "m3" }]);
+  });
+
+  it("posts again when its message was deleted by hand", async () => {
+    await postBoard(env, NOW);
+    channel = [];
+    await rename("바뀐 일");
+    await postBoard(env, NOW + 60_000);
+    expect(channel).toEqual(["m2"]);
     expect((await env.DB.prepare("SELECT busy_at FROM discord_meta").first())!.busy_at).toBeNull();
   });
 
