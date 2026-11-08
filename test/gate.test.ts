@@ -111,7 +111,7 @@ describe("/api/gate", () => {
     const first = (await (await call("/api/gate/sync?since=0", { headers: gate })).json()) as Record<string, unknown>;
     expect(first.revoked).toEqual([]);
     expect(first.profiles).toEqual([{ id: ME, name: "지영", avatar: expect.any(String), theme: null }]);
-    expect((first.tools as { host: string }[]).map((t) => t.host)).toEqual(["cert.rescene-remine.com", "monitor.rescene-remine.com", "chart.rescene-remine.com"]);
+    expect((first.tools as { host: string }[]).map((t) => t.host)).toEqual(["cert.rescene-remine.com", "monitor.rescene-remine.com", "chart.rescene-remine.com", "chodong.rescene-remine.com"]);
 
     await call("/logout", { cookie: sess });
     const next = (await (await call(`/api/gate/sync?since=${first.cursor}`, { headers: gate })).json()) as Record<string, unknown>;
