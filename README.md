@@ -53,9 +53,9 @@ A tool counts as up when `https://<host>/_auth/health` answers with 2xx. The las
 <script src="https://team.rescene-remine.com/header.js" defer></script>
 ```
 
-A charcoal bar with the logo, a tool menu and the user's menu (settings, logout), in a shadow root so the tool's CSS doesn't touch it. It needs two things from team-gate on the tool's own host:
+A charcoal bar with the logo, a tool menu and the user's menu (settings, logout), in a shadow root so the tool's CSS doesn't touch it. The open tool menu draws each tool's icon next to its name. It needs two things from team-gate on the tool's own host:
 
-- `GET /_auth/me` → `{ "id", "name", "avatar", "theme": "dark" | "light" | null, "tools": [{ "host", "name" }] }`, or 401. Without it only the logo shows.
+- `GET /_auth/me` → `{ "id", "name", "avatar", "theme": "dark" | "light" | null, "tools": [{ "host", "name", "icon" }] }`, or 401. Without it only the logo shows. `icon` is the name stored on the hub (`mail`, `megaphone`, …). A missing or unknown name draws the box. Sync already sends `icon`; `/_auth/me` has to pass it through.
 - `POST /_auth/logout` from the user menu.
 
 Theme: the header sets `<html data-theme="dark|light">` from the user's hub setting (no setting = dark) and stores it in `localStorage["team-theme"]`. Tools style both themes off that attribute and apply the stored value before first paint, so the page doesn't flash:
