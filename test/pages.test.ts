@@ -117,6 +117,52 @@ describe("pages", () => {
     expect(await env.DB.prepare("SELECT 1 FROM tools WHERE host = 'vote.rescene-remine.com'").first()).toBeNull();
   });
 
+  it("saves mail and notice icons and draws an unknown name as the box", async () => {
+    const admin = await sessionOf(ME);
+    const adminHtml = await (await call("/admin", { cookie: admin })).text();
+    for (const [value, label] of [
+      ["mail", "메일"],
+      ["megaphone", "공지"],
+      ["bell", "알림"],
+      ["pen", "작성"],
+      ["calendar", "일정"],
+      ["users", "사람들"],
+      ["link", "링크"],
+      ["settings", "설정"]
+    ] as const) {
+      expect(adminHtml).toContain(`<option value="${value}">${label}</option>`);
+    }
+    expect(adminHtml).toContain('<option value="check">인증</option>');
+    expect(adminHtml).toContain('<option value="pulse">모니터</option>');
+
+    expect((await post("/admin/tools", admin, { host: "mail.rescene-remine.com", name: "메일 알림", position: "5", icon: "mail" })).status).toBe(302);
+    expect((await post("/admin/tools", admin, { host: "notice.rescene-remine.com", name: "공지 작성", position: "6", icon: "megaphone" })).status).toBe(302);
+    expect(await env.DB.prepare("SELECT icon FROM tools WHERE host = 'mail.rescene-remine.com'").first()).toEqual({ icon: "mail" });
+    expect(await env.DB.prepare("SELECT icon FROM tools WHERE host = 'notice.rescene-remine.com'").first()).toEqual({ icon: "megaphone" });
+
+    const card = (html: string, host: string) => {
+      const start = html.indexOf(`class="card" href="https://${host}.`);
+      return html.slice(start, html.indexOf("</a>", start));
+    };
+    const home = await (await call("/", { cookie: admin })).text();
+    expect(card(home, "cert")).toContain('M8.5 12.5l2.5 2.5 4.5-5');
+    expect(card(home, "monitor")).toContain("M3 12h4l3-7 4 14 3-7h4");
+    expect(card(home, "mail")).toContain("M3 7l9 6 9-6");
+    expect(card(home, "notice")).toContain("M5 10h2l8-4v12l-8-4H5z");
+    const side = home.slice(home.indexOf('class="label">도구'), home.indexOf('class="me"'));
+    expect(side).toContain("M3 7l9 6 9-6");
+    expect(side).toContain("M5 10h2l8-4v12l-8-4H5z");
+
+    await env.DB.prepare("UPDATE tools SET icon = 'nope' WHERE host = 'mail.rescene-remine.com'").run();
+    const again = await (await call("/", { cookie: admin })).text();
+    const mail = card(again, "mail");
+    expect(mail).toContain('x="4" y="4" width="16" height="16" rx="3"');
+    expect(mail).not.toContain("M3 7l9 6 9-6");
+    const sideAgain = again.slice(again.indexOf('class="label">도구'), again.indexOf('class="me"'));
+    expect(sideAgain).toContain("메일 알림");
+    expect(sideAgain).toContain('x="4" y="4" width="16" height="16" rx="3"');
+  });
+
   it("only accepts tool hosts next to the hub", async () => {
     const admin = await sessionOf(ME);
     const res = await post("/admin/tools", admin, { host: "evil.example.com", name: "x", position: "1", icon: "box" });
